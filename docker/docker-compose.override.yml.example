@@ -1,0 +1,10 @@
+# Example Docker Compose override file
+# Rename to docker-compose.override.yml to apply custom local developer settings:
+#
+# services:
+#   backend:
+#     environment:
+#       - DEBUG=True
+#       - ENVIRONMENT=development
+#     ports:
+#       - "8001:8000"
