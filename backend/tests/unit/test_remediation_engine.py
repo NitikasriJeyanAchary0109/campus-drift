@@ -369,3 +369,38 @@ def test_approval_submission_and_pending_listing(remediation_test_env):
     assert res_prev.status_code == 200
     assert res_prev.json()["status"] == "APPROVED"
     assert res_prev.json()["approval"]["decision"] == "APPROVED"
+
+
+def test_generate_remediation_plan_rejects_shell_metacharacters_with_security_violation(remediation_test_env):
+    """
+    Explicit Security Violation Test per User Request 2(a):
+    Attempts to pass non-whitelisted or shell-metacharacter-containing values
+    into remediation plan generation and asserts it is rejected with SecurityViolationError
+    (HTTP 422 Unprocessable Entity) before any Netmiko or device execution can take place.
+    """
+    db, device, event, admin, neteng, _, client, tokens = remediation_test_env
+
+    # Add a drift detail containing shell injection metacharacters
+    bad_detail = DriftDetail(
+        drift_event_id=event.id,
+        key_path="ntp.server",
+        expected_value="10.10.0.1",
+        actual_value="10.10.0.2; rm -rf /",
+        change_type="MODIFIED",
+        rule_id=None,
+    )
+    db.add(bad_detail)
+    db.commit()
+
+    # 1. Calling generate_remediation_plan directly raises HTTPException 422 wrapping SecurityViolationError
+    with pytest.raises(HTTPException) as exc_info:
+        generate_remediation_plan(db, event.id, neteng.id)
+    assert exc_info.value.status_code == 422
+    assert "SecurityViolationError" in exc_info.value.detail or "Invalid IP address" in exc_info.value.detail
+
+    # 2. Calling via API returns 422 Unprocessable Entity
+    neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}
+    res = client.post(f"/api/remediation/{event.id}/generate-plan", headers=neteng_headers)
+    assert res.status_code == 422
+    assert "SecurityViolationError" in res.json()["detail"] or "Invalid IP address" in res.json()["detail"]
+

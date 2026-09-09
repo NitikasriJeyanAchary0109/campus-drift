@@ -24,6 +24,7 @@ from app.models.users import User
 from app.models.devices import Device
 from app.models.baselines import Baseline
 from app.models.drift import DriftEvent, DriftDetail
+from app.models.configurations import ConfigurationSnapshot
 from app.models.remediation import RemediationPlan, Approval, RemediationAction, Backup
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
@@ -269,17 +270,46 @@ def test_remediation_automated_rollback_demonstration(db_session, tokens):
     assert data["result"] == "ROLLED_BACK"
     assert data["verification_passed"] is False
 
-    # 6. Verify device state reverted to pre-change backup
+    # 6. Capture and assert on intermediate device state (User Item #1):
+    # Retrieve the verification snapshot taken immediately after commands were pushed
+    # but before automated rollback was executed.
+    action = db_session.query(RemediationAction).filter(RemediationAction.id == data["action_id"]).first()
+    assert action is not None
+    assert action.verification_snapshot_id is not None
+
+    intermediate_snapshot = (
+        db_session.query(ConfigurationSnapshot)
+        .filter(ConfigurationSnapshot.id == action.verification_snapshot_id)
+        .first()
+    )
+    assert intermediate_snapshot is not None
+    intermediate_cfg = intermediate_snapshot.raw_config
+
+    # Assert Intermediate State genuinely differs from Pre-Change State:
+    # Commands ('no snmp-server community public' and 'transport input ssh') took effect:
+    assert "snmp-server community public" not in intermediate_cfg
+    assert "transport input ssh" in intermediate_cfg
+    assert "transport input telnet" not in intermediate_cfg
+    assert intermediate_cfg != initial_cfg
+
+    # 7. Verify device state reverted to pre-change backup after rollback
     conn_post = _connect_to_device(db_session, device)
     try:
         post_rollback_cfg = conn_post.send_command("show running-config")
     finally:
         conn_post.disconnect()
 
-    # Pre-change config state MUST be restored: SNMP public is still present
+    # Pre-change config state MUST be restored: SNMP public and telnet are present again
     assert "snmp-server community public" in post_rollback_cfg
+    assert "transport input telnet" in post_rollback_cfg
 
-    # 7. Verify CRITICAL alert generated
+    # Assert all 3 states are provably distinct:
+    # State 1 (Pre-change) != State 2 (Intermediate)
+    # State 2 (Intermediate) != State 3 (Post-rollback)
+    assert initial_cfg != intermediate_cfg
+    assert intermediate_cfg != post_rollback_cfg
+
+    # 8. Verify CRITICAL alert generated
     alert = (
         db_session.query(Alert)
         .filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == data["action_id"])
@@ -290,7 +320,7 @@ def test_remediation_automated_rollback_demonstration(db_session, tokens):
     assert "Remediation verification failed" in alert.message
     assert "Automated rollback" in alert.message
 
-    # 8. Verify AuditLog entry
+    # 9. Verify AuditLog entry
     audit = (
         db_session.query(AuditLog)
         .filter(AuditLog.target_id == data["action_id"], AuditLog.action == "REMEDIATION_ROLLED_BACK")
@@ -299,3 +329,91 @@ def test_remediation_automated_rollback_demonstration(db_session, tokens):
     assert audit is not None
     assert audit.after_state["failure_reason"] == "Verification failed post-change"
     assert audit.after_state["rollback_result"] == "SUCCESSFULLY_RESTORED_TO_BACKUP"
+
+
+def test_admin_manual_rollback_trigger_restores_backup_and_creates_audit_log(db_session, tokens):
+    """
+    Explicit Admin Manual Rollback Test per User Request 2(b):
+    1. Tests RBAC: Viewer and NetworkEngineer are blocked with 403 Forbidden.
+    2. Admin directly triggers POST /api/remediation/{plan_id}/rollback.
+    3. Confirms device running configuration is restored to pre-change backup.
+    4. Confirms AuditLog record (action=MANUAL_ROLLBACK) is persisted with Admin user_id.
+    """
+    device = db_session.query(Device).filter(Device.hostname == "sw-hostel-01").first()
+    if not device:
+        pytest.skip("sw-hostel-01 not seeded in database")
+
+    client = TestClient(app)
+    admin_headers = {"Authorization": f"Bearer {tokens['admin']}"}
+    neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}
+    viewer_headers = {"Authorization": f"Bearer {tokens['viewer']}"}
+
+    # 1. Collect configuration & establish drift event
+    snapshot = collect_device_configuration(db=db_session, device_id=device.id)
+    drift_event = (
+        db_session.query(DriftEvent)
+        .filter(DriftEvent.device_id == device.id, DriftEvent.snapshot_id == snapshot.id)
+        .order_by(DriftEvent.detected_at.desc())
+        .first()
+    )
+    assert drift_event is not None
+
+    # 2. Generate and approve remediation plan
+    res_gen = client.post(f"/api/remediation/{drift_event.id}/generate-plan", headers=neteng_headers)
+    assert res_gen.status_code == 201
+    plan_id = res_gen.json()["id"]
+
+    res_appr = client.post(
+        f"/api/approvals/{plan_id}",
+        json={"decision": "APPROVED", "comment": "Approved for manual rollback verification"},
+        headers=neteng_headers,
+    )
+    assert res_appr.status_code == 201
+
+    # 3. Apply the plan successfully (creates pre-change backup in DB)
+    res_apply = client.post(f"/api/remediation/{plan_id}/apply", headers=neteng_headers)
+    assert res_apply.status_code == 200
+    assert res_apply.json()["result"] == "SUCCESS"
+
+    # Verify device state changed: SNMP public is now removed
+    conn = _connect_to_device(db_session, device)
+    try:
+        cfg_after_apply = conn.send_command("show running-config")
+        assert "snmp-server community public" not in cfg_after_apply
+    finally:
+        conn.disconnect()
+
+    # 4. RBAC Check: Non-Admin roles MUST be rejected with 403 Forbidden (§9)
+    res_viewer = client.post(f"/api/remediation/{plan_id}/rollback", headers=viewer_headers)
+    assert res_viewer.status_code == 403
+
+    res_neteng = client.post(f"/api/remediation/{plan_id}/rollback", headers=neteng_headers)
+    assert res_neteng.status_code == 403
+
+    # 5. Admin executes manual rollback via POST /api/remediation/{plan_id}/rollback
+    res_rollback = client.post(f"/api/remediation/{plan_id}/rollback", headers=admin_headers)
+    assert res_rollback.status_code == 200
+    rb_data = res_rollback.json()
+    assert rb_data["result"] == "ROLLED_BACK"
+    assert "Manual rollback executed" in rb_data["message"]
+
+    # 6. Verify device state reverted to pre-change backup (SNMP public is restored)
+    conn2 = _connect_to_device(db_session, device)
+    try:
+        cfg_after_rollback = conn2.send_command("show running-config")
+        assert "snmp-server community public" in cfg_after_rollback
+    finally:
+        conn2.disconnect()
+
+    # 7. Verify AuditLog entry created with Admin user_id
+    admin_user = db_session.query(User).filter(User.username == "admin").first()
+    audit = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.target_id == rb_data["action_id"], AuditLog.action == "MANUAL_ROLLBACK")
+        .first()
+    )
+    assert audit is not None
+    assert audit.user_id == admin_user.id
+    assert audit.target_type == "remediation"
+    assert audit.after_state["result"] == "ROLLED_BACK"
+

@@ -22,3 +22,19 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog(action={self.action}, target={self.target_type}, at={self.timestamp})>"
+
+
+from sqlalchemy import event
+
+
+@event.listens_for(AuditLog, "before_update")
+def _prevent_audit_log_update(mapper, connection, target):
+    """Enforce application-layer immutability per §13: denies UPDATE on audit_logs."""
+    raise PermissionError("AuditLog records are immutable: UPDATE operations are strictly prohibited.")
+
+
+@event.listens_for(AuditLog, "before_delete")
+def _prevent_audit_log_delete(mapper, connection, target):
+    """Enforce application-layer immutability per §13: denies DELETE on audit_logs."""
+    raise PermissionError("AuditLog records are immutable: DELETE operations are strictly prohibited.")
+

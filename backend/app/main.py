@@ -9,6 +9,9 @@ from app.api.tickets import router as tickets_router
 from app.api.drift import router as drift_router
 from app.api.remediation import router as remediation_router
 from app.api.approvals import router as approvals_router
+from app.api.alerts import router as alerts_router
+from app.api.audit import router as audit_router
+from app.api.dashboard import router as dashboard_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -38,6 +41,9 @@ app.include_router(tickets_router, prefix="/api")
 app.include_router(drift_router, prefix="/api")
 app.include_router(remediation_router, prefix="/api")
 app.include_router(approvals_router, prefix="/api")
+app.include_router(alerts_router, prefix="/api")
+app.include_router(audit_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 
 
 @app.get("/")
