@@ -36,6 +36,7 @@ class BaselineRule(Base):
     rule_type = Column(String(16), nullable=False)  # EXACT / REGEX / MUST_EXIST / MUST_NOT_EXIST
     severity_weight = Column(Integer, nullable=False)  # 1–100, drives risk score
     hard_compliance = Column(Boolean, nullable=False, default=False)  # true = violates regardless of ticket
+    description = Column(Text, nullable=True)  # why this rule matters / security rationale
 
     baseline = relationship("Baseline", back_populates="rules")
     drift_details = relationship("DriftDetail", back_populates="rule")

@@ -11,9 +11,10 @@ class DriftEvent(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     device_id = Column(Uuid(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
     snapshot_id = Column(Uuid(as_uuid=True), ForeignKey("configuration_snapshots.id"), nullable=False)
-    baseline_id = Column(Uuid(as_uuid=True), ForeignKey("baselines.id"), nullable=False)
-    label = Column(String(32), nullable=False, index=True)  # see §12 label taxonomy
+    baseline_id = Column(Uuid(as_uuid=True), ForeignKey("baselines.id"), nullable=True)
+    label = Column(String(32), nullable=False, index=True)  # see §12 label taxonomy (includes NO_BASELINE)
     risk_score = Column(Integer, nullable=False, index=True)  # 0–100
+    underlying_severity = Column(Integer, nullable=True)  # Pre-ticket-cap raw score for audit/evidence
     matched_ticket_id = Column(Uuid(as_uuid=True), ForeignKey("change_tickets.id"), nullable=True)
     status = Column(String(16), nullable=False, default="OPEN")  # OPEN / ACK / RESOLVED / FALSE_POSITIVE
     detected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)

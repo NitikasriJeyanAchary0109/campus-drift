@@ -15,6 +15,7 @@ class ConfigurationSnapshot(Base):
     normalized_json = Column(JSONB_compat(), nullable=False)  # indexed with GIN for querying
     collected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     collection_method = Column(String(16), nullable=False, default="SSH")  # SSH / API / MANUAL_UPLOAD
+    status = Column(String(16), nullable=False, default="SUCCESS")  # SUCCESS / PARSE_ERROR / FAILED
 
     device = relationship("Device", back_populates="snapshots")
     drift_events = relationship("DriftEvent", back_populates="snapshot")

@@ -56,6 +56,43 @@ services:
     depends_on:
       - backend
 
+  # Simulated Network Devices for Netmiko SSH Collection & Remediation
+  sim_switch_classroom:
+    build:
+      context: .
+      dockerfile: network/simulated_devices/Dockerfile
+    container_name: sim_switch_classroom
+    restart: unless-stopped
+    environment:
+      - DEVICE_HOSTNAME=sw-classroom-01
+      - CONFIG_FILE=/etc/network/classroom_switch.cfg
+    ports:
+      - "2222:22"
+
+  sim_switch_hostel:
+    build:
+      context: .
+      dockerfile: network/simulated_devices/Dockerfile
+    container_name: sim_switch_hostel
+    restart: unless-stopped
+    environment:
+      - DEVICE_HOSTNAME=sw-hostel-01
+      - CONFIG_FILE=/etc/network/hostel_switch.cfg
+    ports:
+      - "2223:22"
+
+  sim_router_lab:
+    build:
+      context: .
+      dockerfile: network/simulated_devices/Dockerfile
+    container_name: sim_router_lab
+    restart: unless-stopped
+    environment:
+      - DEVICE_HOSTNAME=rtr-lab-01
+      - CONFIG_FILE=/etc/network/lab_router.cfg
+    ports:
+      - "2224:22"
+
 volumes:
   postgres_data:
     driver: local
