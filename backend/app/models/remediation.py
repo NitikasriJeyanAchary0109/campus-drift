@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Uuid
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -35,6 +36,10 @@ class Approval(Base):
 
     remediation_plan = relationship("RemediationPlan", back_populates="approval")
     approver = relationship("User", back_populates="approvals")
+
+    @property
+    def approver_username(self) -> Optional[str]:
+        return self.approver.username if self.approver else None
 
     def __repr__(self) -> str:
         return f"<Approval(plan_id={self.remediation_plan_id}, decision={self.decision})>"

@@ -10,7 +10,7 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor: attach in-memory JWT token from Zustand state (NEVER from localStorage)
+// Interceptor to attach in-memory JWT token if present
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token && config.headers) {
@@ -19,10 +19,9 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor: automatically refresh on 401 using httpOnly cookie
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (value?: any) => void;
+  resolve: (value?: unknown) => void;
   reject: (reason?: any) => void;
 }> = [];
 
@@ -37,18 +36,27 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = [];
 };
 
+// Response interceptor: handle 401 unauthorized with silent token refresh
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt refresh if 401, not already retried, and not an auth endpoint
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // Do not attempt refresh on auth login or refresh requests themselves to avoid loops
     if (
-      error.response?.status === 401 &&
-      !originalRequest._retry &&
-      !originalRequest.url?.includes('/api/auth/login') &&
-      !originalRequest.url?.includes('/api/auth/refresh')
+      originalRequest.url?.includes('/api/auth/login') ||
+      originalRequest.url?.includes('/api/auth/refresh') ||
+      originalRequest.url?.includes('/api/auth/logout') ||
+      originalRequest._retry
     ) {
+      return Promise.reject(error);
+    }
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -64,19 +72,21 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshRes = await axios.post(
-          (import.meta.env.VITE_API_BASE_URL || '') + '/api/auth/refresh',
-          {},
-          { withCredentials: true }
-        );
+        const refreshed = await useAuthStore.getState().initAuth();
+        const newToken = useAuthStore.getState().token;
 
-        const { access_token, user } = refreshRes.data;
-        // Store access token in-memory ONLY
-        useAuthStore.getState().setAuth(access_token, user);
-
-        processQueue(null, access_token);
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
-        return apiClient(originalRequest);
+        if (refreshed && newToken) {
+          processQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return apiClient(originalRequest);
+        } else {
+          processQueue(new Error('Session refresh failed'), null);
+          useAuthStore.getState().logout();
+          if (!window.location.pathname.startsWith('/login')) {
+            window.location.href = '/login';
+          }
+          return Promise.reject(error);
+        }
       } catch (refreshErr) {
         processQueue(refreshErr, null);
         useAuthStore.getState().logout();
@@ -92,36 +102,6 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-/**
- * Silent session restoration on initial app boot:
- * Calls POST /api/auth/refresh using httpOnly cookie to restore in-memory access token.
- */
-export const restoreSession = async (): Promise<boolean> => {
-  try {
-    const res = await axios.post(
-      (import.meta.env.VITE_API_BASE_URL || '') + '/api/auth/refresh',
-      {},
-      { withCredentials: true }
-    );
-    const { access_token, user } = res.data;
-    useAuthStore.getState().setAuth(access_token, user);
-    return true;
-  } catch {
-    useAuthStore.getState().logout();
-    return false;
-  }
-};
-
-/**
- * Clear server-side refresh cookie and in-memory auth state
- */
-export const performLogout = async () => {
-  try {
-    await apiClient.post('/api/auth/logout');
-  } catch {}
-  useAuthStore.getState().logout();
-};
 
 export const queryClient = new QueryClient({
   defaultOptions: {

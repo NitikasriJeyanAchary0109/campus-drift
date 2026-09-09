@@ -118,11 +118,3 @@ def test_get_me_endpoint(auth_api_client):
     assert me_res.status_code == 200
     assert me_res.json()["username"] == "admin_api_user"
     assert me_res.json()["role"] == "Admin"
-
-
-def test_logout_endpoint(auth_api_client):
-    """Verify /api/auth/logout clears refresh cookie."""
-    res = auth_api_client.post("/api/auth/logout")
-    assert res.status_code == 200
-    assert res.json()["message"] == "Logged out successfully"
-

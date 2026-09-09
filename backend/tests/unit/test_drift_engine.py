@@ -676,3 +676,43 @@ def test_underlying_severity_preserves_pre_ticket_cap_score(drift_test_env):
     # Underlying severity must preserve the pre-cap raw score (85)
     assert event.underlying_severity == 85
     assert event.matched_ticket_id == ticket.id
+
+
+def test_alert_deduplication_unit(drift_test_env):
+    """
+    Unit test for alert deduplication:
+    Detecting drift twice on a high-risk drift event (risk_score >= 80)
+    without score increase must generate exactly 1 CRITICAL_DRIFT alert, not two.
+    """
+    db, device, baseline, _, _ = drift_test_env
+    snap1 = ConfigurationSnapshot(
+        device_id=device.id,
+        raw_config="raw1",
+        normalized_json={"line": {"vty": {"transport_input": "telnet"}}},
+        status="SUCCESS",
+    )
+    db.add(snap1)
+    db.commit()
+
+    ev1 = detect_drift(db=db, device=device, snapshot=snap1, baseline=baseline)
+    assert ev1.risk_score >= 80
+
+    alerts1 = db.query(Alert).filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == ev1.id).all()
+    assert len(alerts1) == 1, f"Expected 1 alert on first detection, found {len(alerts1)}"
+
+    # Second detection with identical non-compliant configuration
+    snap2 = ConfigurationSnapshot(
+        device_id=device.id,
+        raw_config="raw2",
+        normalized_json={"line": {"vty": {"transport_input": "telnet"}}},
+        status="SUCCESS",
+    )
+    db.add(snap2)
+    db.commit()
+
+    ev2 = detect_drift(db=db, device=device, snapshot=snap2, baseline=baseline)
+    assert ev2.id == ev1.id
+
+    alerts2 = db.query(Alert).filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == ev2.id).all()
+    assert len(alerts2) == 1, f"Expected exactly 1 alert after repeated detection (dedup), found {len(alerts2)}"
+

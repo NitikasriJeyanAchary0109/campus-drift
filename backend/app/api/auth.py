@@ -165,13 +165,14 @@ def get_me(current_user: User = Depends(get_current_user)):
 @router.post("/logout")
 def logout(response: Response):
     """
-    Clear refresh token cookie.
+    Sign out user by deleting the httpOnly refresh_token cookie.
     Public endpoint.
     """
     response.delete_cookie(
         key="refresh_token",
         httponly=True,
         samesite="lax",
+        secure=not settings.DEBUG,
     )
     return {"message": "Logged out successfully"}
 
