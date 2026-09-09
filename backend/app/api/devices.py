@@ -14,6 +14,7 @@ from app.schemas.devices import (
     DeviceUpdate,
     DeviceOut,
     DeviceDetailOut,
+    DeviceGroupOut,
     DeviceCredentialCreate,
     DeviceCredentialOut,
     PollTriggerResponse,
@@ -68,6 +69,18 @@ def list_devices(
         result.append(d_out)
 
     return result
+
+
+@router.get("/groups", response_model=List[DeviceGroupOut])
+def list_device_groups(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_viewer),
+):
+    """
+    List all campus device groups.
+    Role: Viewer+
+    """
+    return db.query(DeviceGroup).order_by(DeviceGroup.name.asc()).all()
 
 
 @router.post("", response_model=DeviceOut, status_code=status.HTTP_201_CREATED)
