@@ -13,6 +13,7 @@ from app.models.devices import Device, DeviceGroup
 from app.models.configurations import ConfigurationSnapshot
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
+from app.models.drift import DriftEvent
 from app.models.users import User
 from app.services.collection import collect_device_configuration
 from app.services.vault import store_device_credential
@@ -213,3 +214,66 @@ def test_collection_parse_error_handling(db_session, monkeypatch):
         .first()
     )
     assert audit is not None
+
+
+def test_alert_deduplication_on_repeated_polls(db_session):
+    """
+    Alert Deduplication Test per User Item #1 & §14:
+    Poll the same non-compliant device (sw-hostel-01) twice in a row without state change
+    and assert that only ONE CRITICAL_DRIFT alert exists for that drift_event, not two.
+    """
+    device = db_session.query(Device).filter(Device.hostname == "sw-hostel-01").first()
+    if not device:
+        pytest.skip("sw-hostel-01 not seeded in database")
+
+    # Clean up prior alerts for sw-hostel-01's open drift events to start clean
+    prior_event = (
+        db_session.query(DriftEvent)
+        .filter(DriftEvent.device_id == device.id, DriftEvent.status == "OPEN")
+        .first()
+    )
+    if prior_event:
+        db_session.query(Alert).filter(Alert.related_id == prior_event.id).delete()
+        db_session.commit()
+
+    # 1. First poll cycle on non-compliant device
+    snap1 = collect_device_configuration(db=db_session, device_id=device.id)
+    assert snap1.status == "SUCCESS"
+
+    event1 = (
+        db_session.query(DriftEvent)
+        .filter(DriftEvent.device_id == device.id, DriftEvent.status == "OPEN")
+        .order_by(DriftEvent.detected_at.desc())
+        .first()
+    )
+    assert event1 is not None
+    assert event1.label == "Non-Compliant (Critical)"
+
+    alerts1 = (
+        db_session.query(Alert)
+        .filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == event1.id)
+        .all()
+    )
+    assert len(alerts1) == 1, "First poll must generate exactly 1 CRITICAL_DRIFT alert"
+
+    # 2. Second poll cycle on same non-compliant device
+    snap2 = collect_device_configuration(db=db_session, device_id=device.id)
+    assert snap2.status == "SUCCESS"
+
+    event2 = (
+        db_session.query(DriftEvent)
+        .filter(DriftEvent.device_id == device.id, DriftEvent.status == "OPEN")
+        .order_by(DriftEvent.detected_at.desc())
+        .first()
+    )
+    assert event2 is not None
+    assert event2.id == event1.id, "Second poll must maintain/update the existing OPEN drift event"
+
+    # Deduplication assertion: still only 1 alert for that drift_event!
+    alerts2 = (
+        db_session.query(Alert)
+        .filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == event2.id)
+        .all()
+    )
+    assert len(alerts2) == 1, f"Expected exactly 1 CRITICAL_DRIFT alert after repeated poll, found {len(alerts2)}"
+

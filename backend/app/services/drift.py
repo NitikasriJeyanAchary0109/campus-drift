@@ -149,6 +149,22 @@ def detect_drift(
         # Flag device as having NO_BASELINE per §14 (do not report Compliant!)
         group_name = device.device_group.name if device.device_group else "Unknown"
         now = datetime.now(timezone.utc)
+
+        existing_nobase = (
+            db.query(DriftEvent)
+            .filter(
+                DriftEvent.device_id == device.id,
+                DriftEvent.status == "OPEN",
+                DriftEvent.label == "NO_BASELINE",
+            )
+            .first()
+        )
+        if existing_nobase:
+            existing_nobase.snapshot_id = snapshot.id
+            db.commit()
+            db.refresh(existing_nobase)
+            return existing_nobase
+
         event = DriftEvent(
             device_id=device.id,
             snapshot_id=snapshot.id,
@@ -251,8 +267,25 @@ def detect_drift(
 
     # 6. Aggregate into DriftEvent
     now = datetime.now(timezone.utc)
+
+    # Check for an existing OPEN drift event for this device
+    existing_event = (
+        db.query(DriftEvent)
+        .filter(DriftEvent.device_id == device.id, DriftEvent.status == "OPEN")
+        .order_by(DriftEvent.detected_at.desc())
+        .first()
+    )
+
     if not diffs:
         # Device is fully compliant
+        if existing_event:
+            existing_event.status = "RESOLVED"
+            existing_event.label = "Compliant"
+            existing_event.risk_score = 0
+            db.commit()
+            db.refresh(existing_event)
+            return existing_event
+
         event = DriftEvent(
             device_id=device.id,
             snapshot_id=snapshot.id,
@@ -284,39 +317,85 @@ def detect_drift(
                 dominant_ticket = d.matched_ticket.id
                 break
 
-    event = DriftEvent(
-        device_id=device.id,
-        snapshot_id=snapshot.id,
-        baseline_id=baseline.id,
-        label=event_label,
-        risk_score=event_score,
-        underlying_severity=underlying_sev,
-        matched_ticket_id=dominant_ticket,
-        status="OPEN",
-        detected_at=now,
-    )
-    db.add(event)
-    db.flush()
-
-    for d in diffs:
-        detail = DriftDetail(
-            drift_event_id=event.id,
-            key_path=d.concrete_key_path,
-            expected_value=d.expected_value,
-            actual_value=d.actual_value,
-            change_type=d.change_type,
-            rule_id=d.rule.id,
+    previous_score = None
+    if existing_event:
+        # Re-use persistently open drift event
+        previous_score = existing_event.risk_score
+        existing_event.snapshot_id = snapshot.id
+        existing_event.baseline_id = baseline.id
+        existing_event.label = event_label
+        existing_event.risk_score = event_score
+        existing_event.underlying_severity = underlying_sev
+        existing_event.matched_ticket_id = dominant_ticket
+        
+        # Replace drift details
+        db.query(DriftDetail).filter(DriftDetail.drift_event_id == existing_event.id).delete()
+        for d in diffs:
+            detail = DriftDetail(
+                drift_event_id=existing_event.id,
+                key_path=d.concrete_key_path,
+                expected_value=d.expected_value,
+                actual_value=d.actual_value,
+                change_type=d.change_type,
+                rule_id=d.rule.id,
+            )
+            db.add(detail)
+        event = existing_event
+    else:
+        # Create fresh drift event
+        event = DriftEvent(
+            device_id=device.id,
+            snapshot_id=snapshot.id,
+            baseline_id=baseline.id,
+            label=event_label,
+            risk_score=event_score,
+            underlying_severity=underlying_sev,
+            matched_ticket_id=dominant_ticket,
+            status="OPEN",
+            detected_at=now,
         )
-        db.add(detail)
+        db.add(event)
+        db.flush()
 
-    # 7. High-priority threshold alert (score >= 80)
+        for d in diffs:
+            detail = DriftDetail(
+                drift_event_id=event.id,
+                key_path=d.concrete_key_path,
+                expected_value=d.expected_value,
+                actual_value=d.actual_value,
+                change_type=d.change_type,
+                rule_id=d.rule.id,
+            )
+            db.add(detail)
+
+    # 7. Alert Deduplication & High-priority threshold alert (score >= 80) per §14
     if event_score >= 80:
-        alert = Alert(
-            type="CRITICAL_DRIFT",
-            related_id=event.id,
-            message=f"High-priority drift ({event_label}, score: {event_score}) detected on {device.hostname}",
+        prior_alert = (
+            db.query(Alert)
+            .filter(Alert.type == "CRITICAL_DRIFT", Alert.related_id == event.id)
+            .order_by(Alert.created_at.desc())
+            .first()
         )
-        db.add(alert)
+        # ---------------------------------------------------------------------
+        # ALERT DEDUPLICATION (§14):
+        # Suppress re-alerting for the same (device, drift_event) pair while
+        # status remains OPEN, unless the risk_score has increased since the
+        # last alert (escalation trigger).
+        #
+        # Rationale for escalation-trigger choice:
+        # In continuous automated polling, repeatedly firing identical
+        # CRITICAL_DRIFT alerts for a known, open issue causes alert fatigue.
+        # However, if a device's risk score increases (e.g. from 80 to 95 due
+        # to an additional security rule violation), an immediate new alert is
+        # generated to inform network engineers of the escalated threat.
+        # ---------------------------------------------------------------------
+        if not prior_alert or (previous_score is not None and event_score > previous_score):
+            alert = Alert(
+                type="CRITICAL_DRIFT",
+                related_id=event.id,
+                message=f"High-priority drift ({event_label}, score: {event_score}) detected on {device.hostname}",
+            )
+            db.add(alert)
 
     # Audit log drift event detection
     audit = AuditLog(

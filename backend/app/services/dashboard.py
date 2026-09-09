@@ -63,6 +63,27 @@ def get_dashboard_summary(db: Session) -> DashboardSummaryOut:
         devices_by_status[st] = devices_by_status.get(st, 0) + 1
 
     # 2. Compliance and NO_BASELINE calculation
+    # -------------------------------------------------------------------------
+    # DEFINITION OF "COMPLIANT DEVICES" IN DASHBOARD NUMERATOR (§9 & §14):
+    #
+    # A device is counted as COMPLIANT in the numerator ONLY if its latest configuration
+    # matches the active golden baseline (i.e. zero open drift events, or its latest
+    # open event is explicitly labeled "Compliant").
+    #
+    # SPECIFIC HANDLING OF "Drift-Authorized" (TICKET-COVERED) EVENTS:
+    # A device with an open "Drift-Authorized" event is counted as DRIFTED (NOT compliant)
+    # in the compliance numerator.
+    #
+    # RATIONALE:
+    # While an approved change ticket down-weights the display risk score to 1-30 per §12
+    # and suppresses critical alerts (signaling an authorized maintenance window or approved
+    # variance), the device's running configuration still physically deviates from the
+    # approved golden baseline. In network operations and compliance audits, authorized
+    # drift represents an active deviation under ticket tracking, not true baseline compliance.
+    # To achieve true 100% baseline compliance, the engineer must either revert the device
+    # to baseline upon ticket expiry or promote the change into a new baseline version
+    # (POST /api/baselines + PUT /api/baselines/{id}/activate).
+    # -------------------------------------------------------------------------
     # Preload active baselines by (device_group_id, vendor_lower)
     active_baselines = (
         db.query(Baseline.device_group_id, func.lower(Baseline.vendor))
@@ -90,6 +111,7 @@ def get_dashboard_summary(db: Session) -> DashboardSummaryOut:
         if not has_baseline or (latest_event and latest_event.label == "NO_BASELINE"):
             no_baseline_count += 1
         elif latest_event and latest_event.status == "OPEN" and latest_event.label != "Compliant":
+            # Any open non-compliant drift (including Drift-Authorized) is counted as drifted
             drifted_count += 1
         else:
             # Either latest event is Compliant, or latest drift is RESOLVED / FALSE_POSITIVE, or no drift detected
