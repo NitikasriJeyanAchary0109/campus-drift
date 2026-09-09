@@ -1,14 +1,15 @@
 import React from 'react';
 import { useAuthStore } from '../store/useAuthStore';
+import { performLogout } from '../api/client';
 import { Bell, Shield, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const Topbar: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await performLogout();
     navigate('/login');
   };
 

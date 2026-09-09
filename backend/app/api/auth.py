@@ -160,3 +160,18 @@ def get_me(current_user: User = Depends(get_current_user)):
         is_active=current_user.is_active,
         created_at=current_user.created_at,
     )
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """
+    Clear refresh token cookie.
+    Public endpoint.
+    """
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        samesite="lax",
+    )
+    return {"message": "Logged out successfully"}
+

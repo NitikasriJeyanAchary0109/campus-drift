@@ -404,3 +404,29 @@ def test_generate_remediation_plan_rejects_shell_metacharacters_with_security_vi
     assert res.status_code == 422
     assert "SecurityViolationError" in res.json()["detail"] or "Invalid IP address" in res.json()["detail"]
 
+
+def test_list_remediation_plans_endpoint(remediation_test_env):
+    """Verify GET /api/remediation/plans lists all plans with NetEng+ role and 403 for Viewer."""
+    db, device, event, admin, neteng, viewer, client, tokens = remediation_test_env
+
+    # 1. Generate a plan
+    neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}
+    res_gen = client.post(f"/api/remediation/{event.id}/generate-plan", headers=neteng_headers)
+    assert res_gen.status_code == 201
+    plan_id = res_gen.json()["id"]
+
+    # 2. NetEng lists plans
+    res_list = client.get("/api/remediation/plans", headers=neteng_headers)
+    assert res_list.status_code == 200
+    plans = res_list.json()
+    assert len(plans) >= 1
+    assert any(p["id"] == plan_id for p in plans)
+    found = next(p for p in plans if p["id"] == plan_id)
+    assert found["device_hostname"] == device.hostname
+    assert "line vty 0 4" in found["proposed_commands"]
+
+    # 3. Viewer is forbidden (403)
+    viewer_headers = {"Authorization": f"Bearer {tokens['viewer']}"}
+    res_viewer = client.get("/api/remediation/plans", headers=viewer_headers)
+    assert res_viewer.status_code == 403
+

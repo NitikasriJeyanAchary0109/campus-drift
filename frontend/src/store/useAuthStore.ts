@@ -11,38 +11,35 @@ interface AuthState {
   token: string | null;
   user: User | null;
   isAuthenticated: boolean;
+  isRestoring: boolean;
   setAuth: (token: string, user: User) => void;
   setUser: (user: User) => void;
+  setRestoring: (isRestoring: boolean) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => {
-  const initialToken = localStorage.getItem('token');
-  let initialUser: User | null = null;
-  try {
-    const raw = localStorage.getItem('user');
-    if (raw) initialUser = JSON.parse(raw);
-  } catch {
-    initialUser = null;
-  }
+// Clean up any legacy localStorage tokens if present
+try {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+} catch {}
 
-  return {
-    token: initialToken,
-    user: initialUser,
-    isAuthenticated: !!initialToken,
-    setAuth: (token: string, user: User) => {
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      set({ token, user, isAuthenticated: true });
-    },
-    setUser: (user: User) => {
-      localStorage.setItem('user', JSON.stringify(user));
-      set({ user });
-    },
-    logout: () => {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      set({ token: null, user: null, isAuthenticated: false });
-    },
-  };
-});
+export const useAuthStore = create<AuthState>((set) => ({
+  token: null,
+  user: null,
+  isAuthenticated: false,
+  isRestoring: true, // Page begins in session restoration state until POST /api/auth/refresh completes
+  setAuth: (token: string, user: User) => {
+    set({ token, user, isAuthenticated: true, isRestoring: false });
+  },
+  setUser: (user: User) => {
+    set({ user });
+  },
+  setRestoring: (isRestoring: boolean) => {
+    set({ isRestoring });
+  },
+  logout: () => {
+    set({ token: null, user: null, isAuthenticated: false, isRestoring: false });
+  },
+}));
+

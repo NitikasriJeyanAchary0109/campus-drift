@@ -47,6 +47,7 @@ class RemediationPlanOut(BaseModel):
     status: str  # PENDING / APPROVED / REJECTED / APPLIED
     created_at: datetime
     approval: Optional[ApprovalOut] = None
+    actions: Optional[List[RemediationActionOut]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
