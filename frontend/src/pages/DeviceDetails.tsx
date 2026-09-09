@@ -16,8 +16,6 @@ import {
   GitCompare,
   ArrowUpRight,
   X,
-  Lock,
-  Radio,
 } from 'lucide-react';
 
 interface DeviceDetail {
