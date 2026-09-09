@@ -1,5 +1,6 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useAuthStore } from './store/useAuthStore';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -15,12 +16,30 @@ import { Alerts } from './pages/Alerts';
 import { AuditLogs } from './pages/AuditLogs';
 import { Settings } from './pages/Settings';
 
+const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      <Route path="/" element={<Layout />}>
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<Dashboard />} />
         <Route path="devices" element={<Devices />} />
         <Route path="devices/:id" element={<DeviceDetails />} />
@@ -39,3 +58,4 @@ export const AppRoutes: React.FC = () => {
     </Routes>
   );
 };
+
