@@ -8,10 +8,7 @@ import {
   Search,
   RefreshCw,
   AlertTriangle,
-  CheckCircle2,
   Ticket,
-  ChevronRight,
-  ShieldAlert,
   ArrowUpRight,
 } from 'lucide-react';
 
