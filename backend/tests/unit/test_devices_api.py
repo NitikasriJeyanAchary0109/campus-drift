@@ -285,3 +285,15 @@ def test_encrypted_credential_storage_and_leak_prevention(device_test_env):
     assert detail_res.status_code == 200
     assert detail_res.json()["has_credentials"] is True
     assert secret_plaintext not in str(detail_res.json())
+
+
+def test_list_device_groups_endpoint(device_test_env):
+    """Verify Viewer+ can list device groups."""
+    client, tokens, group_id, _ = device_test_env
+    viewer_headers = {"Authorization": f"Bearer {tokens['viewer']}"}
+    res = client.get("/api/devices/groups", headers=viewer_headers)
+    assert res.status_code == 200
+    groups = res.json()
+    assert len(groups) >= 1
+    assert any(g["id"] == str(group_id) for g in groups)
+
