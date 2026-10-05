@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ITSM_WEBHOOK_SECRET: str = "itsm_webhook_shared_secret_campus_drift_2026"
+
+    # Redis & Celery
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    CELERY_TASK_ALWAYS_EAGER: bool = False
+    CELERY_POLL_INTERVAL_SECONDS: float = 3600.0
 
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [

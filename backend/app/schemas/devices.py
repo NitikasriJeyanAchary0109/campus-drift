@@ -77,3 +77,12 @@ class PollTriggerResponse(BaseModel):
     status: str
     message: str
     timestamp: datetime
+    task_id: Optional[str] = None
+
+
+class PollStatusResponse(BaseModel):
+    task_id: str
+    device_id: UUID
+    status: str
+    result: Optional[dict] = None
+    error: Optional[str] = None

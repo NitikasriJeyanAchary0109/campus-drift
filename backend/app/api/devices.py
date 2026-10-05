@@ -18,8 +18,12 @@ from app.schemas.devices import (
     DeviceCredentialCreate,
     DeviceCredentialOut,
     PollTriggerResponse,
+    PollStatusResponse,
     SnapshotSummaryOut,
 )
+from celery.result import AsyncResult
+from app.core.celery_app import celery_app
+from app.tasks.collection import poll_device_task
 from app.services.vault import store_device_credential
 from app.services.collection import collect_device_configuration
 
@@ -311,15 +315,20 @@ def set_device_credentials(
     )
 
 
-@router.post("/{device_id}/poll", response_model=PollTriggerResponse)
+@router.post(
+    "/{device_id}/poll",
+    response_model=PollTriggerResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 def trigger_device_poll(
     device_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_neteng),
 ):
     """
-    Trigger on-demand configuration collection for a device.
+    Trigger on-demand configuration collection for a device via Celery task.
     Role: NetEng+
+    Returns: HTTP 202 Accepted with task reference.
     """
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
@@ -334,18 +343,36 @@ def trigger_device_poll(
             detail="Cannot poll a decommissioned device",
         )
 
-    try:
-        snapshot = collect_device_configuration(
-            db=db,
-            device_id=device_id,
-            triggered_by_user_id=current_user.id,
+    if device.vendor and device.vendor.lower() in ("openconfig_stub", "openconfig", "gnmi"):
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=(
+                "Vendor 'openconfig_stub': gNMI streaming telemetry support is planned in future release. "
+                "See docs/architecture.md §21."
+            ),
         )
+
+    try:
+        task = poll_device_task.delay(
+            str(device_id),
+            str(current_user.id) if current_user else None,
+        )
+        task_id = getattr(task, "id", str(task))
+        task_status = "ACCEPTED"
+        msg = f"Polling task enqueued for {device.hostname} (Task ID: {task_id})"
+        ts = datetime.now(timezone.utc)
+        if hasattr(task, "result") and isinstance(task.result, dict):
+            task_status = task.result.get("status", "ACCEPTED")
+            if "snapshot_id" in task.result:
+                msg = f"Configuration successfully collected for {device.hostname} (snapshot ID: {task.result['snapshot_id']})"
+
         return PollTriggerResponse(
             device_id=device.id,
             hostname=device.hostname,
-            status=snapshot.status,
-            message=f"Configuration successfully collected for {device.hostname} (snapshot ID: {snapshot.id})",
-            timestamp=snapshot.collected_at,
+            status=task_status,
+            message=msg,
+            timestamp=ts,
+            task_id=task_id,
         )
     except (ConnectionError, PermissionError) as e:
         raise HTTPException(
@@ -357,3 +384,67 @@ def trigger_device_poll(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enqueue polling task for {device.hostname}: {e}",
+        )
+
+
+@router.get(
+    "/{device_id}/poll-status/{task_id}",
+    response_model=PollStatusResponse,
+)
+def get_poll_task_status(
+    device_id: UUID,
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_viewer),
+):
+    """
+    Check the status of an asynchronous device polling Celery task.
+    Role: Viewer+
+    """
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Device with ID {device_id} not found",
+        )
+
+    state = "PENDING"
+    result_data = None
+    error_msg = None
+
+    try:
+        async_res = AsyncResult(task_id, app=celery_app)
+        state = async_res.state
+        if state == "SUCCESS":
+            result_data = async_res.result if isinstance(async_res.result, dict) else {"result": str(async_res.result)}
+        elif state == "FAILURE":
+            error_msg = str(async_res.result)
+    except Exception as e:
+        latest_snap = (
+            db.query(ConfigurationSnapshot)
+            .filter(ConfigurationSnapshot.device_id == device_id)
+            .order_by(ConfigurationSnapshot.collected_at.desc())
+            .first()
+        )
+        if latest_snap:
+            state = latest_snap.status
+            result_data = {
+                "status": latest_snap.status,
+                "snapshot_id": str(latest_snap.id),
+                "device_id": str(device_id),
+            }
+        else:
+            state = "PENDING"
+            error_msg = f"Task backend check: {e}"
+
+    return PollStatusResponse(
+        task_id=task_id,
+        device_id=device_id,
+        status=state,
+        result=result_data,
+        error=error_msg,
+    )

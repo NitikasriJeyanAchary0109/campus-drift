@@ -20,6 +20,11 @@ from app.models.drift import DriftEvent, DriftDetail
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
 from app.services.normalization import values_equal, resolve_wildcard_key_paths
+from app.services.acl_analyzer import (
+    is_acl_rule_list,
+    to_acl_rule_list,
+    analyze_acl_permutation,
+)
 from app.services.tickets import find_matching_ticket
 from app.schemas.drift import EvidenceBundle, DriftDetailOut
 
@@ -75,6 +80,11 @@ def generate_why_it_matters(key_path: str, rule_type: str, expected_val: Any, ac
         return (
             f"VLAN segmentation deviation on '{key_path}'. Improper VLAN tags risk leaking isolated traffic "
             f"between student, faculty, and administrative campus subnets."
+        )
+    if rule_type == "ACL_ORDER_SIGNIFICANT" or "access_list" in lower_path:
+        return (
+            f"ACL rule precedence inversion on '{key_path}'. Reordering overlapping rules with "
+            f"conflicting actions alters first-match packet evaluation and firewall filtering behavior."
         )
     return (
         f"Deviation from approved baseline for '{key_path}': expected '{expected_val}', "
@@ -222,7 +232,27 @@ def detect_drift(
                     change_type = "ADDED"
 
             elif rule_type == "EXACT":
-                if not values_equal(actual_val, rule.expected_value):
+                # Check for ACL rule list evaluation with first-match semantics
+                if is_acl_rule_list(actual_val) and is_acl_rule_list(rule.expected_value):
+                    exp_rules = to_acl_rule_list(rule.expected_value)
+                    act_rules = to_acl_rule_list(actual_val)
+                    if exp_rules and act_rules:
+                        analysis = analyze_acl_permutation(exp_rules, act_rules)
+                        if analysis["status"] == "ACL_ORDER_SIGNIFICANT":
+                            is_diff = True
+                            change_type = "ACL_ORDER_SIGNIFICANT"
+                        elif analysis["status"] == "COSMETIC":
+                            is_diff = False
+                        elif analysis["status"] == "MODIFIED":
+                            is_diff = True
+                            change_type = "MODIFIED"
+                        else:
+                            is_diff = False
+                    else:
+                        is_diff = not values_equal(actual_val, rule.expected_value)
+                        if is_diff:
+                            change_type = "REMOVED" if actual_val is None else ("ADDED" if rule.expected_value is None else "MODIFIED")
+                elif not values_equal(actual_val, rule.expected_value):
                     is_diff = True
                     change_type = "REMOVED" if actual_val is None else ("ADDED" if rule.expected_value is None else "MODIFIED")
 
@@ -241,12 +271,15 @@ def detect_drift(
                 )
 
                 # 5. Severity scoring & Label classification
-                raw_score = score_diff(rule.severity_weight, group_criticality)
+                effective_weight = rule.severity_weight
+                if change_type == "ACL_ORDER_SIGNIFICANT" and effective_weight < 80:
+                    effective_weight = max(effective_weight, 80)
+                raw_score = score_diff(effective_weight, group_criticality)
                 label, mapped_score = classify_diff(raw_score, rule.hard_compliance, ticket)
 
                 why_matters = rule.description or generate_why_it_matters(
                     key_path=concrete_path,
-                    rule_type=rule_type,
+                    rule_type=change_type if change_type == "ACL_ORDER_SIGNIFICANT" else rule_type,
                     expected_val=rule.expected_value,
                     actual_val=actual_val,
                 )

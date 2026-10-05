@@ -16,6 +16,14 @@ from app.services.parsers.cisco_ios import (
     canonicalize_vlan_list,
     canonicalize_tokens,
 )
+from app.services.acl_analyzer import (
+    ACLRule,
+    parse_acl_rule,
+    rules_overlap,
+    is_acl_rule_list,
+    to_acl_rule_list,
+    analyze_acl_permutation,
+)
 
 
 def normalize_config(raw_config: str, vendor: str = "cisco_ios") -> Dict[str, Any]:
@@ -27,6 +35,11 @@ def normalize_config(raw_config: str, vendor: str = "cisco_ios") -> Dict[str, An
 
     if vendor_lower in ("cisco_ios", "cisco", "frr"):
         return parse_cisco_ios(raw_config)
+    elif vendor_lower in ("openconfig_stub", "openconfig", "gnmi"):
+        raise NotImplementedError(
+            "Vendor 'openconfig_stub': gNMI streaming telemetry and OpenConfig YANG model parsing "
+            "are planned for Phase 2 roadmap. Refer to docs/architecture.md §21 for migration architecture."
+        )
     else:
         raise NotImplementedError(f"Parser for vendor '{vendor}' is not supported yet.")
 
@@ -74,6 +87,17 @@ def values_equal(a: Any, b: Any) -> bool:
         return True
     if a is None or b is None:
         return False
+
+    # Handle ACL rule list comparisons with first-match semantic awareness (§11 / Review #2)
+    # Supports both native lists and serialized string representations from DB/YAML.
+    if is_acl_rule_list(a) and is_acl_rule_list(b):
+        exp_rules = to_acl_rule_list(b)
+        act_rules = to_acl_rule_list(a)
+        if exp_rules and act_rules:
+            if len(exp_rules) != len(act_rules):
+                return False
+            analysis = analyze_acl_permutation(exp_rules, act_rules)
+            return not analysis["is_drift"]
 
     # Handle list vs scalar comparisons (e.g. ['10.10.0.1'] vs '10.10.0.1')
     if isinstance(a, list) and not isinstance(b, list):
@@ -146,6 +170,8 @@ def resolve_key_path(tree: Dict[str, Any], key_path: str) -> Any:
     # If result is a single-element list of strings (e.g. ntp.server = ["10.10.0.1"]),
     # return joined or single string for straightforward rule comparison
     if isinstance(curr, list):
+        if key_path.startswith("access_list"):
+            return curr
         if len(curr) == 1:
             return curr[0]
         return ", ".join(str(x) for x in curr)

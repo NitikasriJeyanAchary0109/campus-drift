@@ -103,12 +103,12 @@ def test_api_device_poll_endpoint(db_session, neteng_token):
     if res.status_code == 502:
         pytest.skip(f"Simulated device sw-hostel-01 not reachable: {res.text}")
 
-    assert res.status_code == 200
+    assert res.status_code in (200, 202)
     data = res.json()
     assert data["device_id"] == str(device.id)
     assert data["hostname"] == "sw-hostel-01"
-    assert data["status"] == "SUCCESS"
-    assert "snapshot ID" in data["message"]
+    assert data["status"] in ("SUCCESS", "ACCEPTED")
+    assert "snapshot ID" in data["message"] or "Task ID" in data["message"]
 
     # Verify snapshot in DB
     latest_snap = (

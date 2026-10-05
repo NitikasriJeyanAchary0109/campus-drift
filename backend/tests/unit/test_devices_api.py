@@ -208,13 +208,14 @@ def test_poll_device_rbac(device_test_env, monkeypatch):
         status = "SUCCESS"
         collected_at = datetime.now(timezone.utc)
 
-    monkeypatch.setattr("app.api.devices.collect_device_configuration", lambda **kwargs: MockSnapshot())
+    monkeypatch.setattr("app.tasks.collection.collect_device_configuration", lambda **kwargs: MockSnapshot())
 
-    # NetEng poll -> 200
+    # NetEng poll -> 202 Accepted
     neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}
     res_neteng = client.post(f"/api/devices/{device_id}/poll", headers=neteng_headers)
-    assert res_neteng.status_code == 200
-    assert res_neteng.json()["status"] == "SUCCESS"
+    assert res_neteng.status_code == 202
+    assert res_neteng.json()["status"] in ("SUCCESS", "ACCEPTED")
+    assert res_neteng.json().get("task_id") is not None
 
 
 def test_encrypted_credential_storage_and_leak_prevention(device_test_env):

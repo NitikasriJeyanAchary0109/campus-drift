@@ -68,6 +68,12 @@ def collect_device_configuration(
     if device.status == "DECOMMISSIONED":
         raise ValueError(f"Cannot poll decommissioned device {device.hostname}")
 
+    if device.vendor and device.vendor.lower() in ("openconfig_stub", "openconfig", "gnmi"):
+        raise NotImplementedError(
+            "Vendor 'openconfig_stub': gNMI streaming telemetry collection is planned for Phase 2 roadmap. "
+            "See docs/architecture.md §21 for details."
+        )
+
     # 1. Retrieve credentials from Vault
     cred_tuple = get_device_credential(db, device.id)
     if not cred_tuple:

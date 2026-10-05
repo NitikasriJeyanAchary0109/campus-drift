@@ -38,7 +38,7 @@ class DriftDetail(Base):
     key_path = Column(String(255), nullable=False)
     expected_value = Column(Text, nullable=True)
     actual_value = Column(Text, nullable=True)
-    change_type = Column(String(16), nullable=False)  # ADDED / REMOVED / MODIFIED
+    change_type = Column(String(32), nullable=False)  # ADDED / REMOVED / MODIFIED / ACL_ORDER_SIGNIFICANT
     rule_id = Column(Uuid(as_uuid=True), ForeignKey("baseline_rules.id"), nullable=True)
 
     drift_event = relationship("DriftEvent", back_populates="details")

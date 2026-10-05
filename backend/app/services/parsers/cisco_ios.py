@@ -114,6 +114,7 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
         "interface": {},
         "line": {},
         "access_list": {},
+        "access_list_ordered": {},
         "router": {},
     }
 
@@ -217,6 +218,9 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                     if acl_id not in tree["access_list"]:
                         tree["access_list"][acl_id] = []
                     tree["access_list"][acl_id].append(rule)
+                    if acl_id not in tree["access_list_ordered"]:
+                        tree["access_list_ordered"][acl_id] = []
+                    tree["access_list_ordered"][acl_id].append(rule)
 
             # 9. Block: Interface
             elif lower_line.startswith("interface "):
@@ -295,6 +299,8 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                 current_block_id = acl_name
                 if acl_name not in tree["access_list"]:
                     tree["access_list"][acl_name] = []
+                if acl_name not in tree["access_list_ordered"]:
+                    tree["access_list_ordered"][acl_name] = []
 
             else:
                 # Allowed standard global keywords in Cisco IOS
@@ -397,6 +403,9 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
             elif current_block == "ip_access_list":
                 # permit / deny
                 tree["access_list"][current_block_id].append(stripped)
+                if current_block_id not in tree["access_list_ordered"]:
+                    tree["access_list_ordered"][current_block_id] = []
+                tree["access_list_ordered"][current_block_id].append(stripped)
 
     # Canonicalize order-independent collections
     # 1. NTP servers: sort list

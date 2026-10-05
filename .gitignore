@@ -26,6 +26,8 @@ htmlcov/
 .venv/
 venv/
 ENV/
+celerybeat-schedule*
+*.pid
 
 # Node
 node_modules/

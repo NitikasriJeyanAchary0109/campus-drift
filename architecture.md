@@ -586,21 +586,28 @@ rules:
 
 ## 15. Deployment Architecture
 
+> ### Architecture Decision Record (ADR-003): Superseding APScheduler with Celery + Redis
+> - **Status:** Superseded (Phase 9 / Project Review #2 Evolution)
+> - **Context:** §15 originally adopted an in-process APScheduler design to eliminate broker/worker infrastructure complexity during early milestones. However, reviewer feedback from Project Review #2 noted that blocking Netmiko SSH socket I/O calls executed inline or inside FastAPI's event loop can starve request handling during concurrent multi-device polling sweeps.
+> - **Decision:** Supersede in-process APScheduler with a dedicated asynchronous task queue via Celery and Redis (`celery_worker`, `celery_beat`, and `redis` services). The `/api/devices/{id}/poll` endpoint now enqueues `poll_device_task` and returns an immediate `202 Accepted` response with a tracking `task_id`. Polling task state is queried via `GET /api/devices/{id}/poll-status/{task_id}`. Periodic scheduled collection is offloaded to Celery Beat.
+> - **Known Follow-Up:** Remediation plan execution (`apply_remediation_plan`), which also involves blocking Netmiko SSH push and verification calls, is maintained synchronously for atomic rollback demonstration in this milestone and is scheduled to adopt the same Celery asynchronous task pattern in subsequent iterations.
+
 ```mermaid
 flowchart TD
     INET[User Devices on Campus LAN/VPN] --> RP[Reverse Proxy - Nginx/Traefik + TLS]
     RP --> FE[React static build]
     RP --> API[FastAPI container]
     API --> PG[(PostgreSQL container)]
-    API --> RD[(Redis container - cache/jobstore)]
-    API --> WRK[APScheduler worker - same or separate container]
+    API --> RD[(Redis container - Celery broker/backend)]
+    RD --> WRK[Celery worker - polling execution]
+    RD --> BEAT[Celery Beat - periodic scheduler]
     WRK --> MGMT[Management VLAN]
     MGMT --> NET[Routers / Switches / Firewalls / APs]
 ```
 
 - **Publicly reachable:** Reverse proxy + React build only.
-- **Internal only:** FastAPI, Postgres, Redis, worker, and the management-VLAN link to devices — none of these should have a public IP.
-- **Simpler-option justification (Celery+Redis vs APScheduler):** for this project's scale (dozens–hundreds of devices, single-server deployment), **APScheduler running inside the FastAPI process** is recommended over Celery+Redis-as-broker. It needs no separate broker/worker infra, persists jobs to Postgres directly, and is far easier for a student team to reason about and demo. Redis is still used, but only as an optional response cache and, if desired, a jobstore backend — not as a mandatory message broker. Migrate to Celery only if you later need multi-server horizontal scaling.
+- **Internal only:** FastAPI, Postgres, Redis, Celery worker/beat, and the management-VLAN link to devices — none of these should have a public IP.
+- **Worker evolution note:** Celery + Redis decoupling prevents Netmiko SSH latency from degrading FastAPI ASGI responsiveness while providing horizontal worker scalability across campus subnets.
 
 ---
 
@@ -707,3 +714,49 @@ A single FastAPI backend (modular by service, not by microservice), a React+TS+V
 - **Edge/failure cases to test and report on:** (1) device unreachable mid-poll, (2) malformed/truncated config from a flaky SSH session, (3) two overlapping change tickets with conflicting time windows for the same key_path.
 - **Ethics note to include:** credential handling, least-privilege for who can approve remediation, and the risk of an automated system pushing config to production infrastructure without adequate human review — justify why approval + backup + verify + rollback are non-negotiable, not optional hardening.
 - **Deployment checklist:** see §15 for what's public vs internal; add TLS cert provisioning, `.env` secret rotation, and DB backup schedule as checklist items in your final report.
+
+---
+
+## 21. Roadmap: OpenConfig / gNMI Streaming Telemetry Architecture
+
+### 21.1 Motivation & Scope Boundary (Phase 1 vs Phase 2)
+The Phase 1 implementation deliberately standardizes on **periodic SSH CLI scraping** via Netmiko (`show running-config`) paired with Cisco IOS AST/regex normalization. This design decision was explicitly chosen for campus network environments for several domain-specific reasons:
+1. **Brownfield Device Compatibility:** Enterprise and campus access switches across student hostels, lecture halls, and departmental labs are predominantly legacy hardware (e.g., Cisco Catalyst 2960-X, 3560, 3750) running older software images that lack native gRPC/gNMI dial-out agents or YANG data modeling engines.
+2. **Zero In-Band Agent Footprint:** SSH polling operates without deploying vendor-specific on-box daemons, license upgrades, or opening non-standard TCP ports across edge firewalls.
+3. **Deterministic Testability:** SSH interactions can be faithfully reproduced in lightweight Containerlab, FRRouting, or Docker mock environments without demanding heavy virtualization instances (e.g., Cisco IOS-XRv or Arista cEOS) required for full gNMI protocol simulation.
+
+However, as campus networks modernize with software-defined access (SDA) and multi-vendor spine-leaf fabrics, periodic CLI scraping introduces known operational ceilings:
+- **Polling Latency vs Overhead Tradeoff:** 15-minute polling windows leave brief unauthorized configuration drift undetected between intervals, while sub-minute polling creates significant CPU spikes on switch control planes.
+- **Syntactic Parsing Fragility:** CLI syntax varies across operating system minor versions, requiring ongoing maintenance of vendor-specific text parsers.
+
+### 21.2 Target gNMI Streaming Telemetry Architecture
+In Phase 2, the telemetry collection tier will evolve into a hybrid push/pull pipeline:
+
+```mermaid
+flowchart LR
+    subgraph Campus Network
+        ModernDev[Modern Switches / Routers<br>Arista EOS / Cisco IOS-XE / Junos] -- gNMI Subscribe RPC<br>ON_CHANGE / STREAM --> Collector[gNMI Telemetry Collector<br>gRPC Ingestion Service]
+        LegacyDev[Legacy Campus Switches<br>Catalyst 2960-X / 3560] -- SSH Polling<br>Netmiko / Celery --> CeleryWorker[Celery Polling Worker]
+    end
+
+    subgraph Data Normalization
+        Collector --> YANGNormalizer[OpenConfig YANG Engine<br>Proto JSON Decoder]
+        CeleryWorker --> CLIEngine[AST / Regex Parser]
+    end
+
+    YANGNormalizer --> DiffEngine[Normalized Key-Path Diff Engine<br>interfaces.*, acl.*, system.*]
+    CLIEngine --> DiffEngine
+    DiffEngine --> RiskDB[(PostgreSQL / Drift Events)]
+```
+
+### 21.3 Data Model Normalization via OpenConfig YANG
+Rather than parsing raw string CLI banners and interface blocks, the gNMI pipeline ingests structured protobuf messages modeled after vendor-neutral OpenConfig schemas:
+- **Interfaces:** `openconfig-interfaces.yang` maps directly to `interface.<name>.admin_status`, `interface.<name>.mtu`, and `interface.<name>.port_security`.
+- **Access Control Lists:** `openconfig-acl.yang` represents ACL rule sets with explicit sequence IDs (`acl.acl-sets.acl-set.acl-entries.acl-entry[sequence-id=...]`), natively providing ordered rule semantics and eliminating the ambiguity of text line ordering.
+- **System Management:** `openconfig-system.yang` models NTP servers, DNS resolvers, and AAA authentication servers under standard unified trees.
+
+### 21.4 Stub Vendor Specification (`"openconfig_stub"`)
+To prepare the codebase for this transition without expanding Phase 1 scope or jeopardizing test stability, the system formalizes the `"openconfig_stub"` vendor identifier:
+- Any device registered with `vendor="openconfig_stub"` will register cleanly in the device inventory.
+- Polling requests (`POST /api/devices/{id}/poll`) reject execution with `HTTP 501 Not Implemented` and an explicit diagnostic message referencing this roadmap.
+- The normalization service (`normalize_config(vendor="openconfig_stub")`) raises `NotImplementedError` outlining the future YANG protobuf decoder requirements.

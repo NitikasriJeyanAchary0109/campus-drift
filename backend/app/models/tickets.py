@@ -8,7 +8,9 @@ class ChangeTicket(Base):
     __tablename__ = "change_tickets"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_ref = Column(String(64), unique=True, nullable=False)  # external ITSM ref if any
+    ticket_ref = Column(String(64), unique=True, nullable=False)  # unique ticket ref
+    source = Column(String(32), nullable=False, default="internal")  # internal, servicenow, jira, external
+    external_ref = Column(String(64), nullable=True, index=True)  # external ITSM ID
     device_id = Column(Uuid(as_uuid=True), ForeignKey("devices.id"), nullable=True)  # nullable = applies to group
     device_group_id = Column(Uuid(as_uuid=True), ForeignKey("device_groups.id"), nullable=True)
     key_path_scope = Column(String(255), nullable=False)  # which config area it authorizes
