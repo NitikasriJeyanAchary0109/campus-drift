@@ -18,6 +18,7 @@ An enterprise-grade, automated network configuration-drift detection and remedia
 
 - [Overview](#overview)
 - [Key Features](#key-features)
+- [User Interface & Screenshots](#user-interface--screenshots)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
@@ -61,11 +62,30 @@ In multi-tenant campus networks, switches and routers steadily deviate from secu
 - **Semantic Normalization:** Eliminates syntax-level false positives by canonicalizing CIDR subnet masks, whitespace ordering, boolean equivalents, and VLAN lists.
 - **Rule-Based Baseline Engine:** Supports `EXACT`, `MUST_NOT_EXIST`, `MUST_EXIST`, and `REGEX` rule types with `hard_compliance` security gating.
 - **Zone-Weighted Risk Scoring:** Calibrates severity scores ($1 - 100$) by campus physical zone criticality (Lab $1.2\times$, Classroom $1.0\times$, Hostel $0.8\times$, Public Event $0.5\times$).
-- **Change Ticket Matching ($\pm 30\text{ min}$ grace window):** Temporal correlation matches planned maintenance tickets via API or HMAC-signed ITSM webhooks, downgrading planned work from unauthorized alarms to `Drift-Authorized`.
+- **Change Ticket Matching (±30 min grace window):** Temporal correlation matches planned maintenance tickets via API or HMAC-signed ITSM webhooks, downgrading planned work from unauthorized alarms to `Drift-Authorized`.
 - **Zero Free-Text Remediation:** Prevents CLI injection by generating remediation exclusively through parameterized Jinja2 templates; blacklists shell metacharacters with automatic HTTP 422 rejection.
 - **Automated Backup & Rollback Safety Net:** Captures running-config snapshot prior to remediation. Re-polls device immediately post-change and automatically reverts config if verification fails.
 - **Immutable Append-Only Audit Trail:** Comprehensive operational audit logging tracks all state-changing activities (logins, baseline modifications, approval decisions, execution results).
 - **Built-in Campus Network Emulators:** Includes 3 containerized SSH switches running custom CLI emulators, allowing full end-to-end testing without physical networking hardware.
+
+---
+
+## User Interface & Screenshots
+
+| Overview Dashboard | Device Inventory |
+| :---: | :---: |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Devices](docs/screenshots/devices.png) |
+| *Real-time compliance gauge, active devices breakdown, and 14-day drift trendline* | *Inventory view with zone criticalities, IP endpoints, and live polling triggers* |
+
+| Drift Detection & Side-by-Side Diff | Safe Remediation Terminal |
+| :---: | :---: |
+| ![Drift Details](docs/screenshots/drift.png) | ![Remediation](docs/screenshots/remediation.png) |
+| *Structured rule-level comparison highlighting unauthorized deviations* | *Jinja2-templated command preview, Admin sign-off, and auto-rollback safety* |
+
+| Immutable Audit Trail | Role-Based Authentication |
+| :---: | :---: |
+| ![Audit Logs](docs/screenshots/audit_logs.png) | ![Login](docs/screenshots/login.png) |
+| *Append-only log of all configuration sweeps, approvals, and remediation executions* | *RBAC login with instant demo presets (Admin, NetEng, Viewer)* |
 
 ---
 
@@ -75,34 +95,34 @@ The system follows a modular 3-tier architecture with human-in-the-loop approval
 
 ```mermaid
 flowchart TD
-    subgraph UI["Frontend (React 18 + TypeScript + Vite)"]
-        DASH[Dashboard & Trend Chart]
-        DIFF_UI[Side-by-Side Diff Viewer]
-        APP_UI[Approval Queue]
-        REM_UI[Remediation Terminal]
-        AUD_UI[Audit Trail Table]
+    subgraph UI["Frontend: React 18 + TypeScript + Vite"]
+        DASH["Dashboard & Trend Chart"]
+        DIFF_UI["Side-by-Side Diff Viewer"]
+        APP_UI["Approval Queue"]
+        REM_UI["Remediation Terminal"]
+        AUD_UI["Audit Trail Table"]
     end
 
-    subgraph API["FastAPI Application Layer (Port 8000)"]
-        AUTH[RBAC & In-Memory JWT]
-        COLL_SVC[Collection Service (Netmiko)]
-        NORM_SVC[Canonicalization Normalizer]
-        DRIFT_ENG[Tree-Diff Engine]
-        RISK_ENG[Severity & Taxonomy Classifier]
-        REM_ENG[Jinja2 Remediation Engine]
-        VER_SVC[Verification & Rollback Service]
+    subgraph API["FastAPI Application Layer: Port 8000"]
+        AUTH["RBAC & In-Memory JWT"]
+        COLL_SVC["Collection Service: Netmiko"]
+        NORM_SVC["Canonicalization Normalizer"]
+        DRIFT_ENG["Tree-Diff Engine"]
+        RISK_ENG["Severity & Taxonomy Classifier"]
+        REM_ENG["Jinja2 Remediation Engine"]
+        VER_SVC["Verification & Rollback Service"]
     end
 
     subgraph ASYNC["Background Processing"]
-        CELERY[Celery Worker + Beat]
-        REDIS[(Redis 7 - Broker & Cache)]
+        CELERY["Celery Worker + Beat"]
+        REDIS[("Redis 7 - Broker & Cache")]
     end
 
     subgraph STORAGE["Persistence Layer"]
-        PG[(PostgreSQL 16 - JSONB & GIN)]
+        PG[("PostgreSQL 16 - JSONB & GIN")]
     end
 
-    subgraph NET["Campus Infrastructure (Simulated / Physical)"]
+    subgraph NET["Campus Infrastructure: Simulated / Physical"]
         SIM_C["sw-classroom-01 :2222"]
         SIM_H["sw-hostel-01 :2223"]
         SIM_L["rtr-lab-01 :2224"]
@@ -264,13 +284,16 @@ Raw CLI output is sanitized and normalized:
 
 ### 3. Tree-Diff & Scoring Engine
 The running tree is evaluated against the active baseline rules:
-$$\text{Raw Score} = \min\Big(100, \; \max\big(1, \; \text{round}(\text{rule.severity\_weight} \times \text{group.criticality\_weight})\big)\Big)$$
 
-- **Hard Compliance Guardrail:** Soft rule deviations are capped at score $94$. Only violations with `hard_compliance=True` reach Critical ($95 - 100$).
+```text
+Raw Score = min(100, max(1, round(rule.severity_weight * group.criticality_weight)))
+```
+
+- **Hard Compliance Guardrail:** Soft rule deviations are capped at score 94. Only violations with `hard_compliance=True` reach Critical (95 - 100).
 
 ### 4. Change Ticket Temporal Suppression
 When drift is detected, the engine queries open Change Tickets:
-- If a ticket covers the key path and device within the ticket's active window ($\pm 30\text{ min}$ grace period), the incident is classified as **`Drift-Authorized`** (score $1 - 30$), suppressing high-priority pager alerts.
+- If a ticket covers the key path and device within the ticket's active window (±30 minute grace period), the incident is classified as **`Drift-Authorized`** (score 1 - 30), suppressing high-priority pager alerts.
 
 ### 5. Gated Remediation & Rollback
 1. **Plan Generation:** Network Engineers request a remediation plan. The engine renders parameterized Jinja2 templates (no arbitrary CLI commands allowed).
