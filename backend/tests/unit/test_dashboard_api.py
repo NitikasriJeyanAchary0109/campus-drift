@@ -327,15 +327,15 @@ def test_dashboard_devices_by_status_and_drift_trend_exact_math():
     db.add(snap)
     db.commit()
 
-    now = datetime.now(timezone.utc)
-    today = now.date()
+    today = datetime.now(timezone.utc).date()
+    today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
 
     # Seed 2 drift events today: scores 90 and 80 -> daily average = 85.0, count = 2
-    ev_today1 = DriftEvent(device_id=d1.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-High", risk_score=90, status="OPEN", detected_at=now)
-    ev_today2 = DriftEvent(device_id=d2.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-High", risk_score=80, status="OPEN", detected_at=now - timedelta(hours=2))
+    ev_today1 = DriftEvent(device_id=d1.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-High", risk_score=90, status="OPEN", detected_at=today_start + timedelta(hours=2))
+    ev_today2 = DriftEvent(device_id=d2.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-High", risk_score=80, status="OPEN", detected_at=today_start + timedelta(hours=1))
 
     # Seed 1 drift event 3 days ago: score 60 -> daily average = 60.0, count = 1
-    ev_3d = DriftEvent(device_id=d3.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-Medium", risk_score=60, status="OPEN", detected_at=now - timedelta(days=3))
+    ev_3d = DriftEvent(device_id=d3.id, snapshot_id=snap.id, baseline_id=base.id, label="Drift-Unauthorized-Medium", risk_score=60, status="OPEN", detected_at=today_start - timedelta(days=3) + timedelta(hours=1))
     db.add_all([ev_today1, ev_today2, ev_3d])
     db.commit()
 
