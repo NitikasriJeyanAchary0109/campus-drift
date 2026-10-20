@@ -10,163 +10,162 @@
 [![Tests](https://img.shields.io/badge/Tests-118%2F118%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-An enterprise-grade, automated network configuration-drift detection and remediation platform tailored for decentralized campus environments (academic lecture halls, student hostels, research laboratories, and administrative offices).
+An enterprise-grade, automated network configuration-drift detection and remediation platform designed for decentralized campus environments (academic lecture halls, student hostels, research laboratories, and administrative offices).
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [User Interface & Screenshots](#user-interface--screenshots)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
+- [What the Project Does](#what-the-project-does)
+- [Why the Project is Useful](#why-the-project-is-useful)
+- [Feature Walkthrough & Screenshots](#feature-walkthrough--screenshots)
+- [Architecture & Tech Stack](#architecture--tech-stack)
+- [How to Get Started](#how-to-get-started)
   - [Prerequisites](#prerequisites)
   - [Quickstart with Docker Compose](#quickstart-with-docker-compose)
-  - [Default Demo Credentials](#default-demo-credentials)
-- [Local Development Setup](#local-development-setup)
-  - [Backend Setup](#backend-setup)
-  - [Frontend Setup](#frontend-setup)
-  - [Running Tests](#running-tests)
-- [How It Works](#how-it-works)
-  - [1. Configuration Collection](#1-configuration-collection)
-  - [2. Normalization & Canonicalization](#2-normalization--canonicalization)
-  - [3. Tree-Diff & Scoring Engine](#3-tree-diff--scoring-engine)
-  - [4. Change Ticket Temporal Suppression](#4-change-ticket-temporal-suppression)
-  - [5. Gated Remediation & Rollback](#5-gated-remediation--rollback)
-- [Baseline Definition Example](#baseline-definition-example)
-- [Simulated Campus Network](#simulated-campus-network)
-- [Documentation & Resources](#documentation--resources)
-- [Contributing](#contributing)
-- [Maintainer](#maintainer)
+  - [Pre-Seeded Demo Credentials](#pre-seeded-demo-credentials)
+  - [Local Development Setup](#local-development-setup)
+  - [Running Automated Tests](#running-automated-tests)
+- [Usage Examples & Workflow](#usage-examples--workflow)
+  - [1. Defining a Golden Baseline](#1-defining-a-golden-baseline)
+  - [2. Triggering Configuration Sweeps](#2-triggering-configuration-sweeps)
+  - [3. Ingesting ITSM Change Tickets via Webhook](#3-ingesting-itsm-change-tickets-via-webhook)
+  - [4. Generating & Applying Gated Remediation](#4-generating--applying-gated-remediation)
+- [Where to Get Help & Documentation](#where-to-get-help--documentation)
+- [Who Maintains & Contributes](#who-maintains--contributes)
 
 ---
 
-## Overview
+## What the Project Does
 
 In multi-tenant campus networks, switches and routers steadily deviate from security baselines due to ad-hoc troubleshooting during lectures, temporary lab setups, and unrecorded emergency tweaks. These unmanaged deviations ("configuration drift") introduce critical vulnerabilities:
 - Insecure management protocols (e.g., Telnet re-enabled on access lines).
-- Unauthorized SNMP community strings (`public`/`private`) exposed to student VLANs.
+- Unauthorized SNMP community strings (`public`/`private`) exposed to student subnets.
 - Disabled switchport security facilitating rogue access points and MAC-flooding attacks.
 - NTP clock desynchronization compromising security incident forensics.
-- Unauthorized VLAN assignments causing inter-VLAN leakage between isolated student, faculty, and administrative subnets.
+- Unauthorized VLAN assignments causing inter-VLAN leakage between isolated student, faculty, and administrative networks.
 
-**Campus Drift Detector** continuously audits running configurations against cryptographically verified golden baselines, scores deviations by risk and campus zone criticality, suppresses authorized changes within approved maintenance windows, and generates safe, templated CLI remediation commands with automated pre-change backups and rollback verification.
-
----
-
-## Key Features
-
-- **Vendor-Aware Indented Tokenization:** Hierarchical parser transforms flat Cisco IOS and FRRouting CLI configuration blocks into structured key-path trees.
-- **Semantic Normalization:** Eliminates syntax-level false positives by canonicalizing CIDR subnet masks, whitespace ordering, boolean equivalents, and VLAN lists.
-- **Rule-Based Baseline Engine:** Supports `EXACT`, `MUST_NOT_EXIST`, `MUST_EXIST`, and `REGEX` rule types with `hard_compliance` security gating.
-- **Zone-Weighted Risk Scoring:** Calibrates severity scores ($1 - 100$) by campus physical zone criticality (Lab $1.2\times$, Classroom $1.0\times$, Hostel $0.8\times$, Public Event $0.5\times$).
-- **Change Ticket Matching (±30 min grace window):** Temporal correlation matches planned maintenance tickets via API or HMAC-signed ITSM webhooks, downgrading planned work from unauthorized alarms to `Drift-Authorized`.
-- **Zero Free-Text Remediation:** Prevents CLI injection by generating remediation exclusively through parameterized Jinja2 templates; blacklists shell metacharacters with automatic HTTP 422 rejection.
-- **Automated Backup & Rollback Safety Net:** Captures running-config snapshot prior to remediation. Re-polls device immediately post-change and automatically reverts config if verification fails.
-- **Immutable Append-Only Audit Trail:** Comprehensive operational audit logging tracks all state-changing activities (logins, baseline modifications, approval decisions, execution results).
-- **Built-in Campus Network Emulators:** Includes 3 containerized SSH switches running custom CLI emulators, allowing full end-to-end testing without physical networking hardware.
+**Campus Drift Detector** continuously audits running network configurations against cryptographically verified golden baselines, scores deviations by risk and campus zone criticality, suppresses authorized changes within approved maintenance windows, and generates safe, templated CLI remediation commands with automated pre-change backups and rollback verification.
 
 ---
 
-## User Interface & Screenshots
+## Why the Project is Useful
 
-| Overview Dashboard | Device Inventory |
-| :---: | :---: |
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Devices](docs/screenshots/devices.png) |
-| *Real-time compliance gauge, active devices breakdown, and 14-day drift trendline* | *Inventory view with zone criticalities, IP endpoints, and live polling triggers* |
-
-| Drift Detection & Side-by-Side Diff | Safe Remediation Terminal |
-| :---: | :---: |
-| ![Drift Details](docs/screenshots/drift.png) | ![Remediation](docs/screenshots/remediation.png) |
-| *Structured rule-level comparison highlighting unauthorized deviations* | *Jinja2-templated command preview, Admin sign-off, and auto-rollback safety* |
-
-| Immutable Audit Trail | Role-Based Authentication |
-| :---: | :---: |
-| ![Audit Logs](docs/screenshots/audit_logs.png) | ![Login](docs/screenshots/login.png) |
-| *Append-only log of all configuration sweeps, approvals, and remediation executions* | *RBAC login with instant demo presets (Admin, NetEng, Viewer)* |
+- **Zero Free-Text Command Injection:** Network engineers cannot push arbitrary CLI strings. Remediations are generated exclusively through parameterized Jinja2 templates; any shell metacharacters (`;&|$\`\\`"`}) are rejected automatically with `HTTP 422`.
+- **Semantic Normalization (Zero Cosmetic False Alarms):** Eliminates syntax-level false positives by canonicalizing CIDR subnet masks, interface names, whitespace ordering, boolean equivalents, and VLAN lists.
+- **Semantic ACL Sequence Ordering & Overlap Analysis:** Evaluates pairwise IP subnet intersections to distinguish benign disjoint rule swaps from security-critical overlapping rule swaps.
+- **Zone-Weighted Risk Scoring ($1 - 100$):** Multiplies severity by campus physical zone criticality (Research Lab $1.2\times$, Lecture Hall $1.0\times$, Hostel $0.8\times$, Public Event $0.5\times$).
+- **Temporal Change Ticket Suppression ($\pm30$ min grace window):** Ingests ServiceNow/Jira tickets via HMAC-SHA256 authenticated webhooks, automatically suppressing alarms during planned maintenance.
+- **Automated Backup & Rollback Safety Net:** Captures a pre-change running configuration snapshot, executes remediation, re-polls the device immediately, and triggers automated rollback if post-change verification fails.
+- **Dual-Control Four-Eyes Gate:** Network engineers draft remediation plans; Admins inspect and approve them in the Approval Queue before execution.
+- **Immutable Append-Only Audit Trail:** Database triggers record tamper-resistant logs for all logins, baseline changes, approval decisions, sweeps, and rollbacks.
+- **Simulated Campus Network Built-In:** Includes 3 containerized SSH switches with custom CLI emulators, enabling full end-to-end evaluation without physical hardware.
 
 ---
 
-## Architecture
+## Feature Walkthrough & Screenshots
 
-The system follows a modular 3-tier architecture with human-in-the-loop approval workflows:
+### 1. Operational Overview Dashboard
+*Real-time compliance gauge, active devices inventory breakdown, and 14-day drift trendline analytics.*
+![Dashboard](docs/screenshots/dashboard.png)
+
+---
+
+### 2. Campus Device Inventory
+*Inventory view with physical campus zone weights, IP endpoints, credentials vault, and live polling triggers.*
+![Devices](docs/screenshots/devices.png)
+
+---
+
+### 3. Drift Detection & Side-by-Side Diff Viewer
+*Structured rule-level comparison highlighting unauthorized deviations against golden baselines with unified diff inspection.*
+![Drift Details](docs/screenshots/drift.png)
+
+---
+
+### 4. Safe Remediation Terminal & Rollback Safety
+*Jinja2-templated command preview, Admin peer sign-off gate, live execution, and automated rollback triggers.*
+![Remediation](docs/screenshots/remediation.png)
+
+---
+
+### 5. Immutable Append-Only Audit Trail
+*Tamper-resistant database logs capturing every authentication attempt, configuration sweep, approval decision, and rollback.*
+![Audit Logs](docs/screenshots/audit_logs.png)
+
+---
+
+### 6. Role-Based Access Control (RBAC)
+*Tiered authentication (Admin, Network Engineer, Viewer) featuring 1-click demo presets for evaluation.*
+![Login](docs/screenshots/login.png)
+
+---
+
+## Architecture & Tech Stack
 
 ```mermaid
 flowchart TD
-    subgraph UI["Frontend: React 18 + TypeScript + Vite"]
-        DASH["Dashboard & Trend Chart"]
+    subgraph UI["Frontend Layer: React 18 + TypeScript + Vite (Port 5174)"]
+        DASH["Dashboard & Recharts Trends"]
         DIFF_UI["Side-by-Side Diff Viewer"]
         APP_UI["Approval Queue"]
         REM_UI["Remediation Terminal"]
         AUD_UI["Audit Trail Table"]
     end
 
-    subgraph API["FastAPI Application Layer: Port 8000"]
-        AUTH["RBAC & In-Memory JWT"]
+    subgraph API["FastAPI Application Layer (Port 8000)"]
+        AUTH["RBAC & JWT Auth (httpOnly)"]
         COLL_SVC["Collection Service: Netmiko"]
         NORM_SVC["Canonicalization Normalizer"]
-        DRIFT_ENG["Tree-Diff Engine"]
-        RISK_ENG["Severity & Taxonomy Classifier"]
+        DRIFT_ENG["Tree-Diff & ACL Ordering Engine"]
+        RISK_ENG["Severity & Zone Classifier"]
         REM_ENG["Jinja2 Remediation Engine"]
         VER_SVC["Verification & Rollback Service"]
     end
 
-    subgraph ASYNC["Background Processing"]
-        CELERY["Celery Worker + Beat"]
-        REDIS[("Redis 7 - Broker & Cache")]
+    subgraph ASYNC["Async Processing Layer"]
+        CELERY["Celery Worker + Beat Scheduler"]
+        REDIS[("Redis 7 - Broker & Results")]
     end
 
-    subgraph STORAGE["Persistence Layer"]
-        PG[("PostgreSQL 16 - JSONB & GIN")]
+    subgraph DB["Storage Layer"]
+        POSTGRES[("PostgreSQL 16 - JSONB & Triggers")]
     end
 
-    subgraph NET["Campus Infrastructure: Simulated / Physical"]
-        SIM_C["sw-classroom-01 :2222"]
-        SIM_H["sw-hostel-01 :2223"]
-        SIM_L["rtr-lab-01 :2224"]
+    subgraph EMULATORS["Simulated Campus Network (SSH)"]
+        DEV1["sw-classroom-01 (Port 2222)"]
+        DEV2["sw-hostel-01 (Port 2223)"]
+        DEV3["rtr-lab-01 (Port 2224)"]
     end
 
-    UI -->|HTTPS + Bearer JWT| AUTH
-    AUTH --> COLL_SVC
-    COLL_SVC -->|Netmiko SSH| NET
-    COLL_SVC --> NORM_SVC
-    NORM_SVC --> DRIFT_ENG
-    DRIFT_ENG --> RISK_ENG
-    RISK_ENG --> PG
-    CELERY --> COLL_SVC
-    REDIS --> CELERY
-    APP_UI -->|Approve/Reject| REM_ENG
-    REM_ENG -->|Push CLI| NET
-    VER_SVC -->|Re-Verify| NET
-    API --> PG
+    UI -->|REST / JSON| API
+    API --> POSTGRES
+    API --> REDIS
+    CELERY --> REDIS
+    CELERY --> POSTGRES
+    CELERY -->|SSH Scrape| EMULATORS
+    COLL_SVC -->|SSH Scrape| EMULATORS
 ```
 
----
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
+| Component | Technologies | Primary Role |
 | :--- | :--- | :--- |
-| **Backend** | Python 3.9+, FastAPI, Pydantic v2 | High-throughput asynchronous REST API |
-| **Database** | PostgreSQL 16 Alpine, SQLAlchemy 2.0 | Relational state, JSONB snapshot diff storage |
-| **Task Queue** | Redis 7, Celery 5.4 | Asynchronous periodic network polling sweeps |
+| **Backend API** | FastAPI 0.115, Pydantic v2, Uvicorn | High-throughput asynchronous REST API |
+| **Database** | PostgreSQL 16, SQLAlchemy 2.0, Alembic | Relational data, JSONB snapshots, and trigger audit logging |
+| **Task Queue** | Redis 7, Celery 5.4 | Non-blocking periodic network polling sweeps |
 | **Network Engine** | Netmiko 4.4, Paramiko | SSH CLI configuration pull, commit, and verification |
 | **Templates** | Jinja2 3.1 | Safe, parameterized CLI remediation generation |
 | **Frontend** | React 18, TypeScript 5.5, Vite 5.4 | Interactive Single Page Application (SPA) |
-| **Styling** | Tailwind CSS 3.4, Lucide React | Responsive dark-mode operational dashboard |
-| **State & Data** | TanStack Query v5, Zustand v4 | Client-side caching and session management |
+| **Styling** | Tailwind CSS 3.4, Lucide React | Responsive operational dashboard with dark-mode accents |
+| **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
 | **Charts** | Recharts 2.12 | 14-day compliance and drift trendline analytics |
 | **Testing** | pytest, pytest-asyncio, httpx | 118 automated unit and integration tests |
 
 ---
 
-## Getting Started
+## How to Get Started
 
 ### Prerequisites
 
-Ensure you have the following installed on your machine:
 - [Docker](https://docs.docker.com/get-docker/) (v24.0+) & [Docker Compose](https://docs.docker.com/compose/) (v2.0+)
 - Python 3.9+ (optional, for local non-container development)
 - Node.js 18+ & npm (optional, for local frontend development)
@@ -183,82 +182,62 @@ Ensure you have the following installed on your machine:
    ```bash
    cp .env.example .env
    ```
+   *(If port `5432` is occupied on your host, set `POSTGRES_PORT=5433` in `.env`)*
 
 3. **Launch the entire stack:**
    ```bash
-   docker compose up -d
+   docker compose up --build -d
    ```
 
 4. **Access the application:**
    - **Web UI:** [http://localhost:5174](http://localhost:5174) (or `http://localhost:5173` depending on `.env`)
    - **Interactive API Documentation (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
    - **Alternative ReDoc Docs:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-   - **Backend Health Check:** [http://localhost:8000/health](http://localhost:8000/health)
+   - **Backend Health Check:** [http://localhost:8000/api/health](http://localhost:8000/api/health)
 
-### Default Demo Credentials
+### Pre-Seeded Demo Credentials
 
-Pre-seeded role accounts for testing Role-Based Access Control (RBAC):
+The database is pre-seeded with three demo role accounts for instant testing:
 
-| Role | Username | Password | Capabilities |
+| Role | Username | Password | Access Level |
 | :--- | :--- | :--- | :--- |
 | **Admin** | `admin` | `admin123` | Full access: approve remediation, trigger rollbacks, activate baselines |
-| **Network Engineer** | `neteng` | `neteng123` | Draft baselines, generate remediation plans, poll devices |
-| **Viewer** | `viewer` | `viewer123` | Read-only access to dashboard, audit logs, and compliance trends |
+| **Network Engineer** | `neteng` | `neteng123` | Draft baselines, generate remediation plans, trigger device polling |
+| **Viewer** | `viewer` | `viewer123` | Read-only access to dashboard, devices, drift diffs, and audit logs |
 
----
+> **Tip:** The login screen includes 1-click **Demo Role Preset buttons** to sign in instantly without typing credentials.
 
-## Local Development Setup
+### Local Development Setup
 
-If you prefer to run services natively outside of Docker containers:
-
-### Backend Setup
-
-1. **Create and activate a virtual environment:**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
-
-3. **Run database migrations:**
-   ```bash
-   cd backend
-   alembic upgrade head
-   ```
-
-4. **Start the FastAPI development server:**
-   ```bash
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-
-### Frontend Setup
-
-1. **Navigate to the frontend directory:**
-   ```bash
-   cd frontend
-   ```
-
-2. **Install packages:**
-   ```bash
-   npm install
-   ```
-
-3. **Start the Vite development server:**
-   ```bash
-   npm run dev
-   ```
-
-### Running Tests
-
-The test suite covers unit logic (parsers, tokenizers, drift diffing, RBAC) and end-to-end integration flows (Celery polling, SSH execution, remediation rollback):
+If running natively on your host machine without Docker:
 
 ```bash
-# From project root
-pytest backend/tests
+# 1. Setup Backend Python Environment
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+
+# 2. Run Database Migrations & Seed
+cd backend
+alembic upgrade head
+python ../database/seed/seed_data.py
+
+# 3. Start Backend Server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 4. Setup & Start Frontend (in a new terminal)
+cd ../frontend
+npm install
+npm run dev
+```
+
+### Running Automated Tests
+
+Run the complete 118-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
+
+```bash
+# From project root (with postgres & redis running)
+pytest backend/tests -v
 ```
 
 ```text
@@ -267,45 +246,11 @@ pytest backend/tests
 
 ---
 
-## How It Works
+## Usage Examples & Workflow
 
-### 1. Configuration Collection
-- The Celery scheduler or manual trigger (`POST /api/devices/{id}/poll`) initiates a connection via Netmiko.
-- The raw `running-config` is fetched over SSH, timestamped, and persisted in `configuration_snapshots` with JSONB indexing.
+### 1. Defining a Golden Baseline
 
-### 2. Normalization & Canonicalization
-Raw CLI output is sanitized and normalized:
-```python
-# Values treated as semantically identical (0% false drift):
-"10.10.1.10 255.255.255.0" == "10.10.1.10/24"
-"transport input telnet ssh" == "transport input ssh telnet"
-"switchport trunk allowed vlan 10,20" == "switchport trunk allowed vlan 20,10"
-```
-
-### 3. Tree-Diff & Scoring Engine
-The running tree is evaluated against the active baseline rules:
-
-```text
-Raw Score = min(100, max(1, round(rule.severity_weight * group.criticality_weight)))
-```
-
-- **Hard Compliance Guardrail:** Soft rule deviations are capped at score 94. Only violations with `hard_compliance=True` reach Critical (95 - 100).
-
-### 4. Change Ticket Temporal Suppression
-When drift is detected, the engine queries open Change Tickets:
-- If a ticket covers the key path and device within the ticket's active window (±30 minute grace period), the incident is classified as **`Drift-Authorized`** (score 1 - 30), suppressing high-priority pager alerts.
-
-### 5. Gated Remediation & Rollback
-1. **Plan Generation:** Network Engineers request a remediation plan. The engine renders parameterized Jinja2 templates (no arbitrary CLI commands allowed).
-2. **Approval Gate:** The plan must be explicitly approved by an **Admin** user (`PUT /api/approvals/{id}`).
-3. **Execution & Backup:** A pre-change snapshot is saved. Commands are executed sequentially over SSH.
-4. **Verification & Auto-Rollback:** The device is re-polled immediately. If baseline compliance is not achieved, the engine triggers an automated rollback to the pre-change backup.
-
----
-
-## Baseline Definition Example
-
-Baselines are managed declaratively via JSON/YAML definitions (`POST /api/baselines`):
+Baselines are managed declaratively via JSON or YAML definitions (`POST /api/baselines`):
 
 ```yaml
 name: "Hostel-Edge-Baseline-v1"
@@ -337,46 +282,71 @@ rules:
     hard_compliance: false
 ```
 
+### 2. Triggering Configuration Sweeps
+
+Poll all devices across all campus zones asynchronously via Celery:
+
+```bash
+curl -X POST http://localhost:8000/api/devices/sweep/all \
+  -H "Authorization: Bearer <NETENG_OR_ADMIN_TOKEN>"
+```
+
+### 3. Ingesting ITSM Change Tickets via Webhook
+
+ServiceNow or Jira changes can be posted with HMAC-SHA256 signature verification to suppress planned maintenance alerts:
+
+```bash
+curl -X POST http://localhost:8000/api/tickets/webhook \
+  -H "Content-Type: application/json" \
+  -H "X-ITSM-Signature: sha256=<HMAC_SIGNATURE>" \
+  -d '{
+    "external_ref": "CHG0098231",
+    "source": "ServiceNow",
+    "hostname": "sw-classroom-01",
+    "key_path_scope": "interface.GigabitEthernet0/1",
+    "valid_from": "2026-10-20T18:00:00Z",
+    "valid_to": "2026-10-20T22:00:00Z",
+    "reason": "VLAN re-assignment for new smart podium"
+  }'
+```
+
+### 4. Generating & Applying Gated Remediation
+
+```bash
+# 1. Generate remediation plan (NetEng role)
+curl -X POST http://localhost:8000/api/remediation/generate/<DRIFT_EVENT_ID> \
+  -H "Authorization: Bearer <NETENG_TOKEN>"
+
+# 2. Approve remediation plan (Admin role - Four-Eyes Gate)
+curl -X PUT http://localhost:8000/api/approvals/<APPROVAL_ID> \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "APPROVED", "comments": "Verified against maintenance window CHG0098231"}'
+
+# 3. Apply approved remediation with automatic rollback verification
+curl -X POST http://localhost:8000/api/remediation/<PLAN_ID>/apply \
+  -H "Authorization: Bearer <NETENG_TOKEN>"
+```
+
 ---
 
-## Simulated Campus Network
+## Where to Get Help & Documentation
 
-The platform includes Dockerized Cisco IOS and FRRouting emulators (`network/simulated_devices/`):
+- [architecture.md](architecture.md): Full architectural specification, sequence diagrams, and design records.
+- [docs/itsm-integration.md](docs/itsm-integration.md): Detailed guide for integrating ServiceNow and Jira webhooks with HMAC signatures.
+- [docs/evaluation-report.md](docs/evaluation-report.md): Benchmark results, empirical accuracy metrics, and failure scenarios.
+- [PHASE_COMPLETION_REPORT_35.md](PHASE_COMPLETION_REPORT_35.md): Milestone criteria and test suite breakdown.
+- **Interactive API Documentation:** Available at [http://localhost:8000/docs](http://localhost:8000/docs) when running locally.
 
-| Device Name | Role | Container Port | Host Port | Simulated Quirks |
-| :--- | :--- | :--- | :--- | :--- |
-| `sw-classroom-01` | Classroom Core | `22` | `2222` | Telnet enabled drift, baseline Cisco 2960-X |
-| `sw-hostel-01` | Hostel Access | `22` | `2223` | Public SNMP community string exposed |
-| `rtr-lab-01` | Research Router | `22` | `2224` | FRRouting Linux router with NTP deviation |
-
----
-
-## Documentation & Resources
-
-- [architecture.md](architecture.md): Complete system architecture, component breakdowns, sequence diagrams, and design decisions.
-- [PHASE_COMPLETION_REPORT_35.md](PHASE_COMPLETION_REPORT_35.md): Milestone evaluation report, scope boundaries, and verification criteria.
-- [docs/itsm-integration.md](docs/itsm-integration.md): Guide for connecting ServiceNow and Jira webhooks with HMAC-SHA256 signature verification.
-- [docs/evaluation-report.md](docs/evaluation-report.md): Benchmark results, accuracy metrics, and false-positive evaluation.
+If you encounter issues or have questions:
+- Open an issue on GitHub: [https://github.com/NitikasriJeyanAchary0109/campus-drift/issues](https://github.com/NitikasriJeyanAchary0109/campus-drift/issues)
+- Review the [CONTRIBUTING.md](CONTRIBUTING.md) guide before opening PRs.
 
 ---
 
-## Contributing
+## Who Maintains & Contributes
 
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork the repository** and create your feature branch:
-   ```bash
-   git checkout -b feature/new-parser
-   ```
-2. **Ensure all tests pass**:
-   ```bash
-   pytest backend/tests
-   ```
-3. **Submit a Pull Request** with a detailed summary of changes, test coverage, and target device models.
-
----
-
-## Maintainer
-
-- **Nitikasri Jeyan Achary** ([@NitikasriJeyanAchary0109](https://github.com/NitikasriJeyanAchary0109))
-- Project Repository: [https://github.com/NitikasriJeyanAchary0109/campus-drift](https://github.com/NitikasriJeyanAchary0109/campus-drift)
+- **Project Lead & Maintainer:** Nitikasri Jeyan Achary ([@NitikasriJeyanAchary0109](https://github.com/NitikasriJeyanAchary0109))
+- **Repository:** [https://github.com/NitikasriJeyanAchary0109/campus-drift](https://github.com/NitikasriJeyanAchary0109/campus-drift)
+- **License:** Distributed under the [MIT License](LICENSE).
+- **Contributing Guidelines:** Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on code standards, branch naming, and pull request procedures.
