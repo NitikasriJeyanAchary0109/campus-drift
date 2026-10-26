@@ -53,11 +53,15 @@ def poll_device_task(
 @celery_app.task(name="app.tasks.collection.poll_all_devices_task")
 def poll_all_devices_task() -> List[str]:
     """
-    Periodic sweep: enqueues individual polling tasks for all active devices.
+    Periodic sweep: enqueues polling tasks for active SSH-managed devices (MANUAL_UPLOAD / PAUSED are skipped).
     """
     db = SessionLocal()
     try:
-        devices = db.query(Device).filter(Device.status != "DECOMMISSIONED").all()
+        devices = (
+            db.query(Device)
+            .filter(Device.status != "DECOMMISSIONED", Device.collection_mode == "SSH_POLL")
+            .all()
+        )
         task_ids = []
         for dev in devices:
             task = poll_device_task.delay(str(dev.id))

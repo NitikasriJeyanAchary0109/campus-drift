@@ -216,6 +216,7 @@ Implemented in `backend/app/services/remediation_templates.py`:
 ### 3.6 Legacy Workflow Coexistence
 To accommodate campus edge switches that are air-gapped, firewalled, or restricted by maintenance moratoriums:
 - **Manual Configuration Ingestion:** Implemented via `POST /api/configurations/{device_id}/upload` (`backend/app/api/configurations.py`).
+- **Erratum (added during Review 3 / WP2):** the endpoint named above (`POST /api/configurations/{device_id}/upload`, `backend/app/api/configurations.py`) was **not implemented** at the 35% milestone. Legacy coexistence is delivered in Review 3 as `POST /api/devices/{id}/config-upload` plus per-device collection/shadow modes and a bulk-import script; see [legacy-coexistence.md](docs/legacy-coexistence.md).
 - Network engineers can paste or upload offline CLI dumps captured via console session.
 - The payload passes through the identical normalization, tree-diff, risk-scoring, and change-ticket matching pipeline as automated SSH polls, ensuring consistent compliance reporting across legacy and automated infrastructure.
 

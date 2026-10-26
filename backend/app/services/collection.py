@@ -74,6 +74,12 @@ def collect_device_configuration(
             "See docs/architecture.md §21 for details."
         )
 
+    if device.collection_mode != "SSH_POLL":
+        raise ValueError(
+            f"Device {device.hostname} is in collection mode {device.collection_mode}; "
+            "SSH polling is only available in SSH_POLL mode"
+        )
+
     # 1. Retrieve credentials from Vault
     cred_tuple = get_device_credential(db, device.id)
     if not cred_tuple:
@@ -182,12 +188,40 @@ def collect_device_configuration(
             except Exception:
                 pass
 
-    # 3. Normalize raw configuration
+    # 3-5. Normalize, persist snapshot, run drift detection (shared with manual upload)
+    return ingest_raw_configuration(
+        db=db,
+        device=device,
+        raw_config=raw_config,
+        collection_method="SSH",
+        triggered_by_user_id=triggered_by_user_id,
+        mark_online=True,
+    )
+
+
+def ingest_raw_configuration(
+    db: Session,
+    device: Device,
+    raw_config: str,
+    collection_method: str,
+    triggered_by_user_id: Optional[UUID] = None,
+    collected_at: Optional[datetime] = None,
+    mark_online: bool = False,
+    audit_action: str = "CONFIG_COLLECTED",
+    audit_extra: Optional[dict] = None,
+) -> ConfigurationSnapshot:
+    """
+    Shared ingestion path for every configuration source (SSH poll or legacy manual upload):
+    normalize -> persist snapshot -> audit -> drift detection.
+    Identical processing is what guarantees legacy and automated devices are scored consistently.
+    A parser failure is recorded as a PARSE_ERROR snapshot (never silently skipped).
+    """
     snapshot_status = "SUCCESS"
     normalized_json = {}
     try:
         normalized_json = normalize_config(raw_config, device.vendor)
-        device.status = "ONLINE"
+        if mark_online:
+            device.status = "ONLINE"
     except ParseError as pe:
         snapshot_status = "PARSE_ERROR"
         normalized_json = {"status": "PARSE_ERROR", "error": str(pe)}
@@ -201,41 +235,48 @@ def collect_device_configuration(
             action="PARSE_ERROR",
             target_type="device",
             target_id=device.id,
-            after_state={"error": str(pe)},
+            after_state={"error": str(pe), "collection_method": collection_method},
         )
         db.add(alert)
         db.add(audit)
 
-    # 4. Save Configuration Snapshot
+    # Save Configuration Snapshot
     now = datetime.now(timezone.utc)
     snapshot = ConfigurationSnapshot(
         device_id=device.id,
         raw_config=raw_config,
         normalized_json=normalized_json,
-        collected_at=now,
-        collection_method="SSH",
+        collected_at=collected_at or now,
+        collection_method=collection_method,
         status=snapshot_status,
     )
     db.add(snapshot)
+    db.flush()  # assign snapshot.id so the audit entry can reference it
 
-    # Update device last_polled_at
-    device.last_polled_at = now
+    # Update device last_polled_at (only meaningful for live polls, not offline uploads)
+    if collection_method == "SSH":
+        device.last_polled_at = now
 
-    # Audit log successful collection
+    # Audit log successful ingestion
     if snapshot_status == "SUCCESS":
         audit_success = AuditLog(
             user_id=triggered_by_user_id,
-            action="CONFIG_COLLECTED",
+            action=audit_action,
             target_type="device",
             target_id=device.id,
-            after_state={"snapshot_id": str(snapshot.id), "status": snapshot_status},
+            after_state={
+                "snapshot_id": str(snapshot.id),
+                "status": snapshot_status,
+                "collection_method": collection_method,
+                **(audit_extra or {}),
+            },
         )
         db.add(audit_success)
 
     db.commit()
     db.refresh(snapshot)
 
-    # 5. Trigger automated drift detection per §4 and §17
+    # Trigger automated drift detection per §4 and §17
     if snapshot_status == "SUCCESS":
         try:
             from app.services.drift import detect_drift

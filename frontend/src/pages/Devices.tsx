@@ -17,6 +17,7 @@ import {
   Shield,
   Radio,
 } from 'lucide-react';
+import { ModeBadge } from '../components/LegacyCoexistenceCard';
 
 interface DeviceGroup {
   id: string;
@@ -35,6 +36,8 @@ interface Device {
   last_polled_at: string | null;
   device_group?: DeviceGroup;
   has_credentials: boolean;
+  collection_mode: string;
+  shadow_mode: boolean;
 }
 
 export const Devices: React.FC = () => {
@@ -367,6 +370,9 @@ export const Devices: React.FC = () => {
                           >
                             {device.status}
                           </span>
+                          <div className="mt-1">
+                            <ModeBadge mode={device.collection_mode} shadow={device.shadow_mode} />
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           {device.has_credentials ? (
@@ -393,7 +399,7 @@ export const Devices: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => handlePollDevice(device.id, device.hostname)}
-                              disabled={isPolling || device.status === 'DECOMMISSIONED'}
+                              disabled={isPolling || device.status === 'DECOMMISSIONED' || device.collection_mode !== 'SSH_POLL'}
                               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors disabled:opacity-40"
                               title="Trigger immediate configuration snapshot"
                             >

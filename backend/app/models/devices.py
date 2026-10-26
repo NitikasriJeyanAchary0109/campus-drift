@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, LargeBinary, Uuid
+from sqlalchemy import Boolean, Column, String, Float, DateTime, ForeignKey, LargeBinary, Uuid, text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -31,6 +31,9 @@ class Device(Base):
     device_group_id = Column(Uuid(as_uuid=True), ForeignKey("device_groups.id"), nullable=False)
     status = Column(String(16), nullable=False, default="ONLINE")  # ONLINE / UNREACHABLE / DECOMMISSIONED
     last_polled_at = Column(DateTime, nullable=True)
+    # Legacy coexistence: how configs reach the tool, and whether it may push changes.
+    collection_mode = Column(String(16), nullable=False, default="SSH_POLL", server_default="SSH_POLL")  # SSH_POLL / MANUAL_UPLOAD / PAUSED
+    shadow_mode = Column(Boolean, nullable=False, default=False, server_default=text("false"))  # True = report-only, never push
 
     device_group = relationship("DeviceGroup", back_populates="devices")
     credentials = relationship("DeviceCredential", back_populates="device", uselist=False, cascade="all, delete-orphan")
