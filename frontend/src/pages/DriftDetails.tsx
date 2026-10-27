@@ -28,6 +28,8 @@ interface DriftDetailItem {
   change_type: 'ADDED' | 'REMOVED' | 'MODIFIED' | string;
   rule_id?: string | null;
   why_it_matters?: string | null;
+  source_line?: string | null;
+  source_line_number?: number | null;
 }
 
 interface EvidenceBundle {
@@ -487,6 +489,18 @@ export const DriftDetails: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {detail.source_line && (
+                  <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 font-mono text-[11px] flex items-center gap-3 text-slate-300">
+                    <span className="text-slate-500 uppercase tracking-wider shrink-0">Running-config</span>
+                    <span className="text-slate-500 shrink-0">
+                      {detail.source_line_number != null ? `line ${detail.source_line_number}` : 'not present'}
+                    </span>
+                    <span className="text-amber-300 truncate" title={detail.source_line}>
+                      {detail.source_line}
+                    </span>
+                  </div>
+                )}
 
                 {/* Side-by-Side Panels */}
                 <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 bg-slate-950 font-mono text-xs text-slate-200">
