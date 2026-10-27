@@ -6,7 +6,13 @@ Provides schemas for change tickets that authorize configuration drift per §8, 
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import timezone
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def to_naive_utc(value: datetime) -> datetime:
+    """Ticket windows are stored as naive UTC. Offsets (e.g. +05:30) are converted, naive input is taken as UTC."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
 class ChangeTicketBase(BaseModel):
@@ -19,6 +25,11 @@ class ChangeTicketBase(BaseModel):
     valid_from: datetime = Field(..., description="Start of change window")
     valid_to: datetime = Field(..., description="End of change window")
     status: str = Field(default="OPEN", description="OPEN or CLOSED")
+
+    @field_validator("valid_from", "valid_to")
+    @classmethod
+    def _normalize_window(cls, v: datetime) -> datetime:
+        return to_naive_utc(v)
 
 
 class ChangeTicketCreate(ChangeTicketBase):
@@ -45,3 +56,8 @@ class ITSMWebhookPayload(BaseModel):
     valid_to: datetime = Field(..., description="End of maintenance window")
     status: str = Field(default="OPEN", description="OPEN / CLOSED")
     description: Optional[str] = Field(None, description="Change description or maintenance rationale")
+
+    @field_validator("valid_from", "valid_to")
+    @classmethod
+    def _normalize_window(cls, v: datetime) -> datetime:
+        return to_naive_utc(v)

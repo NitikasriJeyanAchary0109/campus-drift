@@ -1,0 +1,45 @@
+{
+  "started_at": "2026-10-27T10:53:41.381164+00:00",
+  "device": "sw-hostel-01",
+  "drift_event_id": "70f63468-119a-4024-8c87-d1af9f8543fd",
+  "plan_id": "0a844f17-4ee6-4415-80ea-1e025e6ca833",
+  "action_id": "a929fd1a-03c6-426c-96fd-8dbbbaa170c0",
+  "backup_id": "8abd4423-22e6-4010-a773-46b2a18562ef",
+  "action_result": "ROLLED_BACK",
+  "plan_status": "FAILED",
+  "proposed_commands": [
+    "line vty 0 4",
+    "transport input ssh",
+    "no snmp-server community public",
+    "interface FastEthernet0/1",
+    "switchport port-security",
+    "no ntp server 10.10.0.2",
+    "ntp server 10.10.0.1"
+  ],
+  "alert": "CRITICAL: Remediation verification failed on sw-hostel-01. Automated rollback ran and was verified against the pre-change backup. Failed paths: forced verification failure",
+  "audit_after_state": {
+    "device": "sw-hostel-01",
+    "plan_id": "0a844f17-4ee6-4415-80ea-1e025e6ca833",
+    "backup_id": "8abd4423-22e6-4010-a773-46b2a18562ef",
+    "failed_paths": "forced verification failure",
+    "failure_reason": "Verification failed post-change",
+    "rollback_detail": "restored and verified against the pre-change backup (attempt 1)",
+    "rollback_result": "SUCCESSFULLY_RESTORED_TO_BACKUP",
+    "rollback_verified": true
+  },
+  "checks": {
+    "state1 != state2 (remediation really changed the device)": true,
+    "state2 != state3 (rollback really changed it back)": true,
+    "state3 == state1 byte for byte": true,
+    "state3 == state1 semantically (normalized trees)": true,
+    "telnet present in state 1": true,
+    "telnet absent in state 2": true,
+    "telnet present again in state 3": true,
+    "public SNMP present, absent, present again": true,
+    "action result is ROLLED_BACK": true,
+    "backup stored and equals state 1": true,
+    "CRITICAL alert raised": true,
+    "audit entry records a verified restore": true
+  },
+  "all_passed": true
+}

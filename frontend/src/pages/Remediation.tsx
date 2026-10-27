@@ -37,7 +37,7 @@ interface RemediationActionItem {
   id: string;
   remediation_plan_id: string;
   executed_commands: string[];
-  result: 'SUCCESS' | 'FAILED' | 'ROLLED_BACK' | string;
+  result: 'SUCCESS' | 'ROLLED_BACK' | 'ROLLBACK_FAILED' | 'ABORTED' | 'IN_PROGRESS' | string;
   verification_snapshot_id?: string | null;
   executed_at: string;
 }
@@ -48,7 +48,7 @@ interface RemediationPlanItem {
   device_id?: string | null;
   device_hostname?: string | null;
   proposed_commands: string[];
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPLIED' | string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'APPLYING' | 'APPLIED' | 'FAILED' | 'ROLLED_BACK' | 'ROLLBACK_FAILED' | string;
   created_at: string;
   approval?: ApprovalDetail | null;
   actions?: RemediationActionItem[];
@@ -201,6 +201,34 @@ export const Remediation: React.FC = () => {
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Applied
+          </span>
+        );
+      case 'APPLYING':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+            <Clock className="h-3.5 w-3.5" />
+            Applying...
+          </span>
+        );
+      case 'FAILED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+            <XCircle className="h-3.5 w-3.5" />
+            Failed (device unchanged or restored)
+          </span>
+        );
+      case 'ROLLED_BACK':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+            <XCircle className="h-3.5 w-3.5" />
+            Rolled back
+          </span>
+        );
+      case 'ROLLBACK_FAILED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-600 text-white border border-rose-700">
+            <XCircle className="h-3.5 w-3.5" />
+            Rollback failed: manual restore required
           </span>
         );
       case 'PENDING':
@@ -645,6 +673,8 @@ export const Remediation: React.FC = () => {
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : act.result === 'ROLLED_BACK'
                                     ? 'bg-amber-100 text-amber-800'
+                                    : act.result === 'ABORTED' || act.result === 'IN_PROGRESS'
+                                    ? 'bg-slate-100 text-slate-700'
                                     : 'bg-rose-100 text-rose-800'
                                 }`}
                               >

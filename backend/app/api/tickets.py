@@ -11,6 +11,7 @@ import json
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -180,21 +181,24 @@ async def itsm_webhook(
     if not ticket:
         ticket = db.query(ChangeTicket).filter(ChangeTicket.ticket_ref == effective_ref).first()
 
+    def apply_update(existing: ChangeTicket) -> ChangeTicket:
+        existing.external_ref = payload.external_ref
+        existing.source = effective_source
+        existing.key_path_scope = payload.key_path_scope
+        existing.valid_from = payload.valid_from
+        existing.valid_to = payload.valid_to
+        existing.status = payload.status.upper()
+        if device_id:
+            existing.device_id = device_id
+        if device_group_id:
+            existing.device_group_id = device_group_id
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     if ticket:
         # Update existing ticket (idempotent update)
-        ticket.external_ref = payload.external_ref
-        ticket.source = effective_source
-        ticket.key_path_scope = payload.key_path_scope
-        ticket.valid_from = payload.valid_from
-        ticket.valid_to = payload.valid_to
-        ticket.status = payload.status.upper()
-        if device_id:
-            ticket.device_id = device_id
-        if device_group_id:
-            ticket.device_group_id = device_group_id
-        db.commit()
-        db.refresh(ticket)
-        return ticket
+        return apply_update(ticket)
 
     # Create new ticket
     ticket = ChangeTicket(
@@ -209,6 +213,21 @@ async def itsm_webhook(
         status=payload.status.upper(),
     )
     db.add(ticket)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent delivery of the same ticket won the race (ticket_ref is unique): treat as a re-delivery
+        db.rollback()
+        winner = (
+            db.query(ChangeTicket)
+            .filter(
+                (ChangeTicket.external_ref == payload.external_ref) & (ChangeTicket.source == effective_source)
+                | (ChangeTicket.ticket_ref == effective_ref)
+            )
+            .first()
+        )
+        if not winner:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicting concurrent ticket delivery; retry")
+        return apply_update(winner)
     db.refresh(ticket)
     return ticket

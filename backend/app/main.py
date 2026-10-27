@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.health import router as health_router
@@ -21,6 +23,17 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """
+    422 responses without echoing the submitted values: FastAPI's default handler returns each invalid input
+    verbatim, which (a) crashed with a 500 on text that cannot be encoded as UTF-8 (e.g. a lone surrogate in an
+    uploaded config) and (b) reflected secrets such as passwords back to the caller.
+    """
+    safe = [{"loc": list(e.get("loc", [])), "msg": str(e.get("msg", "")), "type": str(e.get("type", ""))} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": safe})
+
 
 # CORS Middleware setup
 app.add_middleware(
