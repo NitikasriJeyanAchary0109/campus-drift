@@ -1,0 +1,577 @@
+[
+  {
+    "device": "sw-cls-00",
+    "group": "Classroom",
+    "scenario": "r_ntp_prefer",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-cls-12",
+    "group": "Classroom",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "FN",
+    "key_path": "line.vty.transport_input",
+    "detail": "missed vty_telnet_added_split"
+  },
+  {
+    "device": "sw-cls-12",
+    "group": "Classroom",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=CRITICAL system=COMPLIANT (score 0)"
+  },
+  {
+    "device": "sw-cls-15",
+    "group": "Classroom",
+    "scenario": "r_snmp_location",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-hst-03",
+    "group": "Hostel",
+    "scenario": "d_acl_overlap_swap",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-hst-04",
+    "group": "Hostel",
+    "scenario": "d_acl_entry_removed",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-hst-09",
+    "group": "Hostel",
+    "scenario": "d_trunk_leak",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-hst-10",
+    "group": "Hostel",
+    "scenario": "r_banner",
+    "stratum": "realism",
+    "notes": "legitimate login banner (unindented body, ^C delimiter)",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-lab-00",
+    "group": "Lab",
+    "scenario": "d_trunk_leak",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-00",
+    "group": "Lab",
+    "scenario": "d_trunk_leak",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-01",
+    "group": "Lab",
+    "scenario": "cos_vlan_notation",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-01",
+    "group": "Lab",
+    "scenario": "cos_vlan_notation",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-01",
+    "group": "Lab",
+    "scenario": "cos_vlan_notation",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-02",
+    "group": "Lab",
+    "scenario": "d_vty_telnet_only",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-02",
+    "group": "Lab",
+    "scenario": "d_vty_telnet_only",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-03",
+    "group": "Lab",
+    "scenario": "t_portsec_prefix_scope",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-03",
+    "group": "Lab",
+    "scenario": "t_portsec_prefix_scope",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-03",
+    "group": "Lab",
+    "scenario": "t_portsec_prefix_scope",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=AUTHORIZED system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-04",
+    "group": "Lab",
+    "scenario": "d_portsec_explicit_no",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-04",
+    "group": "Lab",
+    "scenario": "d_portsec_explicit_no",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-05",
+    "group": "Lab",
+    "scenario": "d_portsec_removed",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-05",
+    "group": "Lab",
+    "scenario": "d_portsec_removed",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-06",
+    "group": "Lab",
+    "scenario": "t_multi_partial",
+    "stratum": "core",
+    "notes": "ticket authorizes NTP only; the trunk leak is unauthorized",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-06",
+    "group": "Lab",
+    "scenario": "t_multi_partial",
+    "stratum": "core",
+    "notes": "ticket authorizes NTP only; the trunk leak is unauthorized",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-08",
+    "group": "Lab",
+    "scenario": "t_other_device",
+    "stratum": "core",
+    "notes": "ticket belongs to sw-lab-09",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-08",
+    "group": "Lab",
+    "scenario": "t_other_device",
+    "stratum": "core",
+    "notes": "ticket belongs to sw-lab-09",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-08",
+    "group": "Lab",
+    "scenario": "t_other_device",
+    "stratum": "core",
+    "notes": "ticket belongs to sw-lab-09",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=LOW system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-09",
+    "group": "Lab",
+    "scenario": "d_acl_overlap_swap",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-09",
+    "group": "Lab",
+    "scenario": "d_acl_overlap_swap",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-10",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-10",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-10",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-11",
+    "group": "Lab",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-11",
+    "group": "Lab",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-11",
+    "group": "Lab",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "FN",
+    "key_path": "line.vty.transport_input",
+    "detail": "missed vty_telnet_added_split"
+  },
+  {
+    "device": "sw-lab-11",
+    "group": "Lab",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=CRITICAL system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-12",
+    "group": "Lab",
+    "scenario": "d_access_vlan_mgmt",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-12",
+    "group": "Lab",
+    "scenario": "d_access_vlan_mgmt",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-13",
+    "group": "Lab",
+    "scenario": "r_ntp_extra_server",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-13",
+    "group": "Lab",
+    "scenario": "r_ntp_extra_server",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-13",
+    "group": "Lab",
+    "scenario": "r_ntp_extra_server",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=LOW system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-14",
+    "group": "Lab",
+    "scenario": "t_hard_telnet",
+    "stratum": "core",
+    "notes": "hard-compliance rule: a valid ticket must NOT authorize it",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-14",
+    "group": "Lab",
+    "scenario": "t_hard_telnet",
+    "stratum": "core",
+    "notes": "hard-compliance rule: a valid ticket must NOT authorize it",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-15",
+    "group": "Lab",
+    "scenario": "d_vty_transport_all",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-15",
+    "group": "Lab",
+    "scenario": "d_vty_transport_all",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-16",
+    "group": "Lab",
+    "scenario": "r_snmp_location",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-lab-17",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-17",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-17",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-18",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.GigabitEthernet0/1.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-18",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "FP",
+    "key_path": "interface.Vlan99.port_security.enabled",
+    "detail": "expected=true actual=false (REMOVED)"
+  },
+  {
+    "device": "sw-lab-18",
+    "group": "Lab",
+    "scenario": "clean",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 84)"
+  },
+  {
+    "device": "sw-lab-19",
+    "group": "Lab",
+    "scenario": "r_ntp_prefer",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-evt-03",
+    "group": "PublicEvent",
+    "scenario": "d_access_vlan_mgmt",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=LOW (score 42)"
+  },
+  {
+    "device": "sw-evt-07",
+    "group": "PublicEvent",
+    "scenario": "t_wrong_scope",
+    "stratum": "core",
+    "notes": "ticket scope (snmp) does not cover the trunk key path",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=LOW (score 42)"
+  },
+  {
+    "device": "sw-evt-10",
+    "group": "PublicEvent",
+    "scenario": "r_banner",
+    "stratum": "realism",
+    "notes": "legitimate login banner (unindented body, ^C delimiter)",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-evt-12",
+    "group": "PublicEvent",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "FN",
+    "key_path": "line.vty.transport_input",
+    "detail": "missed vty_telnet_added_split"
+  },
+  {
+    "device": "sw-evt-12",
+    "group": "PublicEvent",
+    "scenario": "r_vty_split_telnet",
+    "stratum": "realism",
+    "notes": "telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=CRITICAL system=COMPLIANT (score 0)"
+  },
+  {
+    "device": "sw-evt-13",
+    "group": "PublicEvent",
+    "scenario": "r_ntp_prefer",
+    "stratum": "realism",
+    "notes": "",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  }
+]
