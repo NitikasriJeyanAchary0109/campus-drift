@@ -41,6 +41,7 @@ The judgement table (`evaluation/spec.py: TIER_JUDGEMENT`) is:
 | Port-security off on an edge port | MEDIUM | MEDIUM | MEDIUM | HIGH | LOW | rogue-device risk; research labs hold sensitive data, pop-up event ports are short-lived |
 | Trunk allows an extra VLAN | HIGH | HIGH | HIGH | HIGH | MEDIUM | VLAN-hopping / segmentation breach |
 | Edge port moved onto management VLAN | HIGH | HIGH | HIGH | HIGH | MEDIUM | user device on the management plane |
+| Edge port moved to another (non-management) VLAN | MEDIUM | MEDIUM | MEDIUM | MEDIUM | LOW | user lands in the wrong segment, but not on the management plane |
 | ACL entry order inverted (overlapping permit/deny) | HIGH | HIGH | HIGH | HIGH | HIGH | changes first-match filtering verdicts |
 | ACL entry removed | HIGH | HIGH | HIGH | HIGH | HIGH | silently weakens filtering |
 | NTP re-pointed / removed / extra server | LOW | LOW | LOW | LOW | LOW | forensic-clock risk, not directly exploitable |
@@ -83,15 +84,16 @@ An event with `risk_score ≥ 80` must provide, for **every** detail: key path, 
 
 ## 6. Experiment design
 
-* **Corpus:** 100 devices (20 per site type: Classroom, Hostel, Office, Lab, PublicEvent) from a seeded generator, ~45 scenarios in three strata:
+* **Corpus:** 100 devices (20 per site type: Classroom, Hostel, Office, Lab, PublicEvent) from a seeded generator, 40 scenarios in three strata:
   * `core`: configuration shapes the product advertises (the five drift types, ticket windows, cosmetic noise),
   * `realism`: constructs common on real switches (banners, `ntp server … prefer`, split VTY ranges, extra rogue NTP server, `snmp-server location` with punctuation),
   * `adversarial`: constructs designed to stress a known limitation (corrupted streams).
+* **Challenge corpus** (`--profile challenge`, 70 devices, 16 scenarios, different seed): authored *after* the standard corpus had been analysed and its defects fixed, run once as a generalization check (`results/challenge-first-run`) and only then used for further fixes. See `docs/evaluation-error-analysis.md` §2 for exactly what is and is not held-out.
 * **Systems compared** (same corpus, same truth):
   1. **A. Naive text diff** (`diff -u` against the device's own last-known-good config),
   2. **B. Normalized full-tree diff** (parse both, compare every leaf; no rules, no tickets, no scoring),
   3. **C. Full pipeline** (rules + normalization + ACL analysis + ticket matching + scoring),
   4. **Ablations of C:** no semantic normalization; no ticket matching; no ACL order analysis.
-* **Held-out split:** devices are split 50/50 (stratified by scenario). Tunable parameters (high-priority threshold ∈ {50…95}, ticket grace ∈ {0,15,30,60} min) are selected on the **tune** split and reported on the **test** split alongside the shipped defaults (80, 30).
+* **Held-out split:** devices are split ≈50/50 (stratified by scenario). Tunable parameters (high-priority threshold ∈ {50…95}, ticket grace ∈ {0,15,30,60} min) are selected on the **tune** split and reported on the **test** split alongside the shipped defaults (80, 30).
 * **Targets (declared before measuring):** device-level precision ≥ 0.90, recall ≥ 0.90, FPR ≤ 0.05; high-priority recall ≥ 0.95; evidence completeness 100 %; p95 latency ≤ 250 ms per snapshot.
-* **Reproducibility:** `python evaluation/generate_corpus.py && python evaluation/run_eval.py`; fixed seed; no network or Docker needed.
+* **Reproducibility:** `python evaluation/generate_corpus.py && python evaluation/run_eval.py`; fixed seed; no network or Docker needed. Tuning is two-fold (fit on one half, report on the other, then swap).

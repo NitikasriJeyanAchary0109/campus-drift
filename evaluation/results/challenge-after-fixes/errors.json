@@ -1,0 +1,20 @@
+[
+  {
+    "device": "sw-cls-12",
+    "group": "Classroom",
+    "scenario": "c_access_vlan_other",
+    "stratum": "challenge",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=HIGH (score 85)"
+  },
+  {
+    "device": "sw-off-10",
+    "group": "Office",
+    "scenario": "c_access_vlan_other",
+    "stratum": "challenge",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=HIGH (score 85)"
+  }
+]

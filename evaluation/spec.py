@@ -49,6 +49,7 @@ TIER_JUDGEMENT: Dict[str, Dict[str, str]] = {
     "portsec_off": {"Classroom": "MEDIUM", "Hostel": "MEDIUM", "Office": "MEDIUM", "Lab": "HIGH", "PublicEvent": "LOW"},
     "trunk_leak": {"Classroom": "HIGH", "Hostel": "HIGH", "Office": "HIGH", "Lab": "HIGH", "PublicEvent": "MEDIUM"},
     "access_vlan_mgmt": {"Classroom": "HIGH", "Hostel": "HIGH", "Office": "HIGH", "Lab": "HIGH", "PublicEvent": "MEDIUM"},
+    "access_vlan_other": {"Classroom": "MEDIUM", "Hostel": "MEDIUM", "Office": "MEDIUM", "Lab": "MEDIUM", "PublicEvent": "LOW"},
     "acl_order": _same("HIGH"),
     "acl_removed": _same("HIGH"),
     "ntp": _same("LOW"),

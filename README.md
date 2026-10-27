@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose_v2-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-147%2F147%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-190%2F190%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An enterprise-grade, automated network configuration-drift detection and remediation platform designed for decentralized campus environments (academic lecture halls, student hostels, research laboratories, and administrative offices).
@@ -159,7 +159,7 @@ flowchart TD
 | **Styling** | Tailwind CSS 3.4, Lucide React | Responsive operational dashboard with dark-mode accents |
 | **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
 | **Charts** | Recharts 2.12 | 14-day compliance and drift trendline analytics |
-| **Testing** | pytest, pytest-asyncio, httpx | 147 automated unit and integration tests |
+| **Testing** | pytest, pytest-asyncio, httpx | 190 automated unit and integration tests |
 
 ---
 
@@ -234,7 +234,7 @@ npm run dev
 
 ### Running Automated Tests
 
-Run the complete 147-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
+Run the complete 190-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
 
 ```bash
 # From project root (with postgres & redis running)
@@ -242,7 +242,7 @@ pytest backend/tests -v
 ```
 
 ```text
-================== 147 passed, 3 warnings in ~75s ==================
+================== 190 passed, 3 warnings in ~80s ==================
 ```
 
 ---
@@ -355,6 +355,7 @@ See [docs/legacy-coexistence.md](docs/legacy-coexistence.md) for the staged migr
 ## Where to Get Help & Documentation
 
 - [architecture.md](architecture.md): Full architectural specification, sequence diagrams, and design records.
+- [docs/evaluation-error-analysis.md](docs/evaluation-error-analysis.md): Labelled-corpus experiment: baselines vs pipeline vs ablations, FP/FN inspection, defects found and fixed. Definitions in [docs/labels-and-thresholds.md](docs/labels-and-thresholds.md); reproduce with [evaluation/README.md](evaluation/README.md).
 - [docs/legacy-coexistence.md](docs/legacy-coexistence.md): Legacy workflow coexistence, staged migration plan, and rollback to manual control.
 - [docs/itsm-integration.md](docs/itsm-integration.md): Detailed guide for integrating ServiceNow and Jira webhooks with HMAC signatures.
 - [docs/evaluation-report.md](docs/evaluation-report.md): Benchmark results, empirical accuracy metrics, and failure scenarios.

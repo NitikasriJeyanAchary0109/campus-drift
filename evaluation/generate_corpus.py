@@ -97,8 +97,8 @@ def build_base(group: str, idx: int) -> Cfg:
     return Cfg(blocks)
 
 
-def render(cfg: Cfg, noise: Optional[random.Random] = None, crlf: bool = False) -> str:
-    lines: List[str] = ["!"]
+def render(cfg: Cfg, noise: Optional[random.Random] = None, crlf: bool = False, preamble: Optional[List[str]] = None) -> str:
+    lines: List[str] = list(preamble or []) + ["!"]
     for i, b in enumerate(cfg.blocks):
         lines.append(b.header)
         for c in b.children:
@@ -133,6 +133,8 @@ class Ctx:
         self.crlf = False
         self.expect_parse_error = False
         self.truncate_after: Optional[str] = None
+        self.preamble: List[str] = []
+        self.per_group = spec.DEVICES_PER_GROUP
         self.notes = ""
 
     def finding(self, key_path: str, family: str, mutation: str, authorized: bool = False) -> None:
@@ -309,7 +311,7 @@ def s_t_hard_telnet(c: Ctx):
 
 def s_t_other_device(c: Ctx):
     m_ntp_repoint(c)
-    other = f"sw-{spec.GROUPS[c.group]['slug']}-{(c.idx + 1) % spec.DEVICES_PER_GROUP:02d}"
+    other = f"sw-{spec.GROUPS[c.group]['slug']}-{(c.idx + 1) % c.per_group:02d}"
     c.ticket("other", "ntp.server", -60, 240, device=other)
     c.notes = f"ticket belongs to {other}"
 
@@ -411,16 +413,133 @@ SCENARIOS: Dict[str, Any] = {
 }
 
 
-def assign_scenarios(rng: random.Random) -> Dict[str, List[str]]:
-    """Per group: CLEAN_PER_GROUP clean devices, then the least-used applicable scenarios (seeded tie-break)."""
-    usage = {name: 0 for name in SCENARIOS}
+# ---- challenge scenarios: authored AFTER the standard corpus was analysed and the defects fixed. -----
+# They are run once as a held-out check and are not used to tune anything.
+
+def s_c_vty_range_telnet(c: Ctx):
+    c.cfg.insert_after("line vty 0 4", Block("line vty 5 15", ["transport input telnet ssh", "login local"]))
+    c.finding("line.vty.transport_input", "vty_telnet", "vty_5_15_telnet")
+    c.notes = "'line vty 0 4' is SSH-only; 'line vty 5 15' allows telnet"
+
+
+def s_c_vty_second_range_none(c: Ctx):
+    c.cfg.insert_after("line vty 0 4", Block("line vty 5 15", ["transport input none", "login local"]))
+    c.notes = "second VTY range disabled with 'transport input none' (compliant)"
+
+
+def s_c_vty_both_telnet(c: Ctx):
+    m_vty(c, "telnet", "vty_both_ranges_telnet")
+    c.cfg.insert_after("line vty 0 4", Block("line vty 5 15", ["transport input telnet", "login local"]))
+
+
+def s_c_banner_single_line(c: Ctx):
+    c.cfg.insert_after("ip domain-name campus.internal", Block("banner login ^CAuthorized users only^C", raw=True))
+
+
+def s_c_banner_hash(c: Ctx):
+    c.cfg.insert_after("ip domain-name campus.internal", Block(
+        "banner motd #", ["Welcome, authorised staff & students only (see policy 4.2).", "#"], raw=True))
+
+
+def s_c_banner_unterminated(c: Ctx):
+    c.cfg.insert_after("ip domain-name campus.internal", Block(
+        "banner motd ^C", ["Authorized access only, no closing delimiter follows"], raw=True))
+    c.expect_parse_error = True
+    c.notes = "an unterminated banner would swallow the rest of the config: must be a PARSE_ERROR, never a silent skip"
+
+
+def s_c_snmp_view(c: Ctx): m_snmp(c, "public", "RO", "snmp_public_with_view", suffix="")
+def s_c_header_lines(c: Ctx):
+    c.preamble = ["Building configuration...", "", "Current configuration : 4096 bytes"]
+
+
+def s_c_lab_extra_port(c: Ctx):
+    blk = Block("interface FastEthernet0/9", ["switchport mode access", f"switchport access vlan {spec.GROUPS[c.group]['access_vlan']}"])
+    c.cfg.insert_after("interface FastEthernet0/8", blk)
+    c.finding("interface.FastEthernet0/9.port_security.enabled", "portsec_off", "extra_access_port_without_portsec")
+    c.notes = "new access port added without port-security (wildcard rule must see it)"
+
+
+def s_c_routed_port(c: Ctx):
+    c.cfg.insert_after("interface GigabitEthernet0/1", Block("interface GigabitEthernet0/2", ["no switchport", "ip address 10.9.9.1 255.255.255.252", "no shutdown"]))
+
+
+def s_c_acl_remark(c: Ctx):
+    blk = c.cfg.find(f"ip access-list extended {spec.ACL_NAME}")
+    blk.children.insert(0, "remark student ingress filter")
+    c.notes = "a remark is documentation, not filtering behaviour (should be cosmetic)"
+
+
+def s_c_nonascii_location(c: Ctx):
+    c.cfg.insert_after("snmp-server community campus-ro RO", Block("snmp-server location Caf\u00e9 Block-B, Floor 2"))
+    c.notes = "legitimate non-ASCII text in an unmonitored line"
+
+
+def s_c_ticket_glob(c: Ctx):
+    m_portsec(c, False, "portsec_removed", authorized=True, port=2)
+    c.ticket("glob", "interface.*.port_security.*", -60, 240)
+
+
+def s_c_two_tickets(c: Ctx):
+    m_ntp_repoint(c, authorized=True)
+    c.ticket("old", "ntp.server", -300, -120)
+    c.ticket("cur", "ntp.server", -60, 120)
+    c.notes = "an expired ticket and a valid ticket both cover the change"
+
+
+def s_c_multi_hard(c: Ctx):
+    m_vty(c, "telnet ssh", "vty_telnet_added")
+    m_snmp(c, "private", "RW", "snmp_private_rw")
+    m_portsec(c, True, "portsec_explicit_no")
+
+
+def s_c_access_vlan_other(c: Ctx):
+    c.cfg.find("interface FastEthernet0/1").children[1] = "switchport access vlan 50"
+    c.finding("interface.FastEthernet0/1.switchport.access_vlan", "access_vlan_other", "access_vlan_to_other")
+
+
+CHALLENGE_SCENARIOS: Dict[str, Any] = {
+    "clean": SCENARIOS["clean"],
+    "c_vty_range_telnet": (s_c_vty_range_telnet, "challenge", False),
+    "c_vty_second_range_none": (s_c_vty_second_range_none, "challenge", False),
+    "c_vty_both_telnet": (s_c_vty_both_telnet, "challenge", False),
+    "c_banner_single_line": (s_c_banner_single_line, "challenge", False),
+    "c_banner_hash_delimiter": (s_c_banner_hash, "challenge", False),
+    "c_banner_unterminated": (s_c_banner_unterminated, "challenge", False),
+    "c_snmp_public_view": (s_c_snmp_view, "challenge", False),
+    "c_show_run_header_lines": (s_c_header_lines, "challenge", False),
+    "c_lab_extra_access_port": (s_c_lab_extra_port, "challenge", False),
+    "c_routed_port": (s_c_routed_port, "challenge", False),
+    "c_acl_remark": (s_c_acl_remark, "challenge", True),
+    "c_nonascii_location": (s_c_nonascii_location, "challenge", False),
+    "c_ticket_glob_scope": (s_c_ticket_glob, "challenge", False),
+    "c_two_tickets_one_expired": (s_c_two_tickets, "challenge", False),
+    "c_multi_hard": (s_c_multi_hard, "challenge", False),
+    "c_access_vlan_other": (s_c_access_vlan_other, "challenge", False),
+}
+GROUP_ONLY = {"c_lab_extra_access_port": {"Lab"}}
+
+PROFILES = {
+    # name: (scenario set, devices per group, clean devices per group, default seed)
+    "standard": (SCENARIOS, spec.DEVICES_PER_GROUP, spec.CLEAN_PER_GROUP, spec.SEED),
+    "challenge": (CHALLENGE_SCENARIOS, 14, 2, 7),
+}
+
+
+def assign_scenarios(rng: random.Random, scenarios: Dict[str, Any] = SCENARIOS, per_group: int = spec.DEVICES_PER_GROUP,
+                     clean_n: int = spec.CLEAN_PER_GROUP) -> Dict[str, List[str]]:
+    """Per group: ``clean_n`` clean devices, then the least-used applicable scenarios (seeded tie-break)."""
+    usage = {name: 0 for name in scenarios}
     plan: Dict[str, List[str]] = {}
     for group, g in spec.GROUPS.items():
-        names = ["clean"] * spec.CLEAN_PER_GROUP
-        pool = [n for n, (_, _, needs_acl) in SCENARIOS.items() if n != "clean" and (g["acl"] or not needs_acl)]
-        while len(names) < spec.DEVICES_PER_GROUP:
+        names = ["clean"] * clean_n
+        pool = [n for n, (_, _, needs_acl) in scenarios.items()
+                if n != "clean" and (g["acl"] or not needs_acl) and group in GROUP_ONLY.get(n, {group})]
+        while len(names) < per_group:
             rng.shuffle(pool)
-            pick = min((n for n in pool if n not in names), key=lambda n: usage[n] - (1 if SCENARIOS[n][2] else 0))  # ACL-only scenarios have fewer eligible groups
+            # ACL-only / single-group scenarios have fewer eligible groups, so favour them
+            pick = min((n for n in pool if n not in names),
+                       key=lambda n: usage[n] - (1 if scenarios[n][2] or n in GROUP_ONLY else 0))
             usage[pick] += 1
             names.append(pick)
         rng.shuffle(names)
@@ -461,26 +580,29 @@ def _truncate(text: str, marker: str) -> str:
     return text[:cut]
 
 
-def generate(out_dir: Path, seed: int = spec.SEED) -> Dict[str, Any]:
+def generate(out_dir: Path, seed: Optional[int] = None, profile: str = "standard") -> Dict[str, Any]:
+    scenarios, per_group, clean_n, default_seed = PROFILES[profile]
+    seed = default_seed if seed is None else seed
     rng = random.Random(seed)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     for sub in ("configs", "golden"):
         (out_dir / sub).mkdir(parents=True)
 
-    plan = assign_scenarios(rng)
+    plan = assign_scenarios(rng, scenarios, per_group, clean_n)
     devices: List[Dict[str, Any]] = []
     tickets: List[Dict[str, Any]] = []
 
     for group in spec.GROUPS:
         for idx, scen in enumerate(plan[group]):
-            fn, stratum, _ = SCENARIOS[scen]
+            fn, stratum, _ = scenarios[scen]
             base = build_base(group, idx)
             host = f"sw-{spec.GROUPS[group]['slug']}-{idx:02d}"
             golden = render(build_base(group, idx))
             ctx = Ctx(base, group, host, idx, random.Random(f"{seed}:{host}"))
+            ctx.per_group = per_group
             fn(ctx)
-            text = render(ctx.cfg, noise=ctx.rng if ctx.noise else None, crlf=ctx.crlf)
+            text = render(ctx.cfg, noise=ctx.rng if ctx.noise else None, crlf=ctx.crlf, preamble=ctx.preamble)
             if ctx.truncate_after:
                 text = _truncate(text, ctx.truncate_after)
 
@@ -516,8 +638,8 @@ def generate(out_dir: Path, seed: int = spec.SEED) -> Dict[str, Any]:
     } for group in spec.GROUPS]
 
     manifest = {
-        "seed": seed, "capture_time": spec.CAPTURE_TIME.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "devices_per_group": spec.DEVICES_PER_GROUP, "device_count": len(devices),
+        "profile": profile, "seed": seed, "capture_time": spec.CAPTURE_TIME.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "devices_per_group": per_group, "device_count": len(devices),
         "devices": devices,
     }
     (out_dir / "baselines.yaml").write_text(yaml.safe_dump(baselines, sort_keys=False, width=120))
@@ -528,14 +650,17 @@ def generate(out_dir: Path, seed: int = spec.SEED) -> Dict[str, Any]:
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parent / "corpus")
-    ap.add_argument("--seed", type=int, default=spec.SEED)
+    ap.add_argument("--profile", choices=sorted(PROFILES), default="standard")
+    ap.add_argument("--out", type=Path, default=None, help="default: evaluation/corpus (standard) or evaluation/corpus_challenge")
+    ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args(argv)
-    manifest = generate(args.out, args.seed)
+    if args.out is None:
+        args.out = Path(__file__).resolve().parent / ("corpus" if args.profile == "standard" else "corpus_challenge")
+    manifest = generate(args.out, args.seed, args.profile)
     strata: Dict[str, int] = {}
     for d in manifest["devices"]:
         strata[d["stratum"]] = strata.get(d["stratum"], 0) + 1
-    print(f"Wrote {manifest['device_count']} devices to {args.out} (seed {args.seed}); strata: {strata}")
+    print(f"Wrote {manifest['device_count']} {args.profile} devices to {args.out} (seed {manifest['seed']}); strata: {strata}")
     return 0
 
 

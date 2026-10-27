@@ -171,7 +171,6 @@ def _parse_ts(value: str) -> datetime:
 
 
 REQUIRED_DETAIL_FIELDS = ("key_path", "expected_value", "rule_id", "why_it_matters", "change_type")
-CITATION_FIELDS = ("source_line", "source_line_number")
 
 
 def evidence_gaps(bundle) -> List[str]:
@@ -188,9 +187,11 @@ def evidence_gaps(bundle) -> List[str]:
                 gaps.append(f"{d.key_path}:{f}")
         if d.change_type != "REMOVED" and getattr(d, "actual_value", None) is None:
             gaps.append(f"{d.key_path}:actual_value")
-        for f in CITATION_FIELDS:
-            if getattr(d, f, None) in (None, ""):
-                gaps.append(f"{d.key_path}:{f}")
+        source = getattr(d, "source_line", None)
+        if source in (None, ""):
+            gaps.append(f"{d.key_path}:source_line")
+        elif getattr(d, "source_line_number", None) is None and not source.startswith("(absent)"):
+            gaps.append(f"{d.key_path}:source_line_number")
     return gaps
 
 

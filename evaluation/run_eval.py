@@ -85,28 +85,33 @@ def run(corpus_dir: Path) -> Dict[str, Any]:
     for g in spec.GROUPS:
         sub = h.subset(det, group=g)
         breakdown["by_group"][g] = {"device": h.device_confusion(sub, pipeline_flagged(full)), "finding": h.finding_metrics(sub, full)}
-    for s in ("core", "realism"):
+    for s in sorted({d["stratum"] for d in det}):
         sub = h.subset(det, stratum=s)
         breakdown["by_stratum"][s] = {"device": h.device_confusion(sub, pipeline_flagged(full)), "finding": h.finding_metrics(sub, full)}
 
-    # --- held-out threshold tuning -------------------------------------------------------------
-    tune, test = [d for d in det if d["split"] == "tune"], [d for d in det if d["split"] == "test"]
-    hp_scores = {t: h.high_priority_metrics(tune, full, t)["f1"] or 0.0 for t in HP_GRID}
-    best_hp = max(hp_scores.values())
-    chosen_hp = nearest(HP_GRID, [t for t, s in hp_scores.items() if abs(s - best_hp) < 1e-9], h.DEFAULT_HP_THRESHOLD)
-    grace_scores = {g: (h.finding_metrics(tune, grace_runs[g])["authorization"]["accuracy"] or 0.0) for g in GRACE_GRID}
-    best_gr = max(grace_scores.values())
-    chosen_grace = nearest(GRACE_GRID, [g for g, s in grace_scores.items() if abs(s - best_gr) < 1e-9], h.DEFAULT_GRACE_MIN)
-    tuning = {
-        "hp_threshold": {"tune_f1_by_value": hp_scores, "chosen": chosen_hp, "default": h.DEFAULT_HP_THRESHOLD},
-        "grace_minutes": {"tune_authorization_accuracy_by_value": grace_scores, "chosen": chosen_grace, "default": h.DEFAULT_GRACE_MIN},
-        "test": {
-            "hp_default": h.high_priority_metrics(test, full, h.DEFAULT_HP_THRESHOLD),
-            "hp_tuned": h.high_priority_metrics(test, full, chosen_hp),
-            "authorization_default": h.finding_metrics(test, full)["authorization"],
-            "authorization_tuned": h.finding_metrics(test, grace_runs[chosen_grace])["authorization"],
-        },
-    }
+    # --- held-out threshold tuning (two folds: tune on one half, report on the other, then swap) --------
+    halves = {"tune": [d for d in det if d["split"] == "tune"], "test": [d for d in det if d["split"] == "test"]}
+    tuning: Dict[str, Any] = {"folds": []}
+    for fit_name, eval_name in (("tune", "test"), ("test", "tune")):
+        fit, held = halves[fit_name], halves[eval_name]
+        hp_scores = {t: h.high_priority_metrics(fit, full, t)["f1"] or 0.0 for t in HP_GRID}
+        best_hp = max(hp_scores.values())
+        chosen_hp = nearest(HP_GRID, [t for t, sc in hp_scores.items() if abs(sc - best_hp) < 1e-9], h.DEFAULT_HP_THRESHOLD)
+        grace_scores = {g: (h.finding_metrics(fit, grace_runs[g])["authorization"]["accuracy"] or 0.0) for g in GRACE_GRID}
+        best_gr = max(grace_scores.values())
+        chosen_grace = nearest(GRACE_GRID, [g for g, sc in grace_scores.items() if abs(sc - best_gr) < 1e-9], h.DEFAULT_GRACE_MIN)
+        tuning["folds"].append({
+            "fit_on": fit_name, "reported_on": eval_name, "n_fit": len(fit), "n_held": len(held),
+            "hp_threshold": {"fit_f1_by_value": hp_scores, "chosen": chosen_hp, "default": h.DEFAULT_HP_THRESHOLD},
+            "grace_minutes": {"fit_authorization_accuracy_by_value": grace_scores, "chosen": chosen_grace, "default": h.DEFAULT_GRACE_MIN},
+            "held_out": {
+                "hp_default": h.high_priority_metrics(held, full, h.DEFAULT_HP_THRESHOLD),
+                "hp_tuned": h.high_priority_metrics(held, full, chosen_hp),
+                "authorization_default": h.finding_metrics(held, full)["authorization"],
+                "authorization_tuned": h.finding_metrics(held, grace_runs[chosen_grace])["authorization"],
+            },
+        })
+    tuning["hp_f1_by_threshold_all_devices"] = {t: h.high_priority_metrics(det, full, t)["f1"] for t in HP_GRID}
 
     # --- headline metrics for the full pipeline --------------------------------------------------
     hp_all = h.high_priority_metrics(det, full, h.DEFAULT_HP_THRESHOLD)
@@ -125,7 +130,7 @@ def run(corpus_dir: Path) -> Dict[str, Any]:
     metrics = {
         "corpus": {"devices": len(devices), "detection_devices": len(det), "seed": corpus["manifest"]["seed"],
                    "scenarios": len({d["scenario"] for d in devices}),
-                   "strata": {s: len(h.subset(devices, stratum=s)) for s in ("core", "realism", "adversarial")},
+                   "strata": {s: len(h.subset(devices, stratum=s)) for s in sorted({d["stratum"] for d in devices})},
                    "truth_positive_devices": sum(1 for d in det if h.device_truth_positive(d)),
                    "tickets": len(corpus["tickets"])},
         "systems_device_level": systems,
@@ -249,17 +254,17 @@ def render_markdown(m: Dict[str, Any], errors: List[Dict[str, Any]], label: str)
             L.append(f"| {name} | {d['n']} | {_fmt(d['precision'])} | {_fmt(d['recall'])} | {_fmt(d['fpr'])} | {_fmt(f['precision'])} | {_fmt(f['recall'])} |")
 
     tu = m["tuning"]
-    L.append("\n## 9. Held-out threshold tuning\n")
-    L.append(f"Tuned on the **tune** half, reported on the **test** half. High-priority threshold: shipped {tu['hp_threshold']['default']}, "
-             f"chosen **{tu['hp_threshold']['chosen']}** (tune F1 by value {tu['hp_threshold']['tune_f1_by_value']}). "
-             f"Ticket grace: shipped {tu['grace_minutes']['default']} min, chosen **{tu['grace_minutes']['chosen']}** "
-             f"(tune authorization accuracy by value {tu['grace_minutes']['tune_authorization_accuracy_by_value']}).\n")
-    L.append("| Test split | High-priority F1 | HP recall | Authorization accuracy |")
-    L.append("|---|---|---|---|")
-    hd, ht = tu["test"]["hp_default"], tu["test"]["hp_tuned"]
-    ad, at = tu["test"]["authorization_default"], tu["test"]["authorization_tuned"]
-    L.append(f"| shipped defaults | {_fmt(hd['f1'])} | {_fmt(hd['recall'])} | {_fmt(ad['accuracy'])} ({ad['correct']}/{ad['n']}) |")
-    L.append(f"| tuned | {_fmt(ht['f1'])} | {_fmt(ht['recall'])} | {_fmt(at['accuracy'])} ({at['correct']}/{at['n']}) |")
+    L.append("\n## 9. Held-out threshold tuning (2-fold)\n")
+    L.append("Each fold fits the high-priority threshold and ticket grace on one half and reports on the other half "
+             "(then the halves swap). Ties are resolved toward the shipped default.\n")
+    L.append("| Fit on → report on | HP threshold (shipped 80) | Grace min (shipped 30) | held-out HP F1: shipped / tuned | held-out HP recall: shipped / tuned | held-out authorization: shipped / tuned |")
+    L.append("|---|---|---|---|---|---|")
+    for fold in tu["folds"]:
+        ho = fold["held_out"]
+        L.append(f"| {fold['fit_on']} → {fold['reported_on']} | **{fold['hp_threshold']['chosen']}** | **{fold['grace_minutes']['chosen']}** | "
+                 f"{_fmt(ho['hp_default']['f1'])} / {_fmt(ho['hp_tuned']['f1'])} | {_fmt(ho['hp_default']['recall'])} / {_fmt(ho['hp_tuned']['recall'])} | "
+                 f"{_fmt(ho['authorization_default']['accuracy'])} / {_fmt(ho['authorization_tuned']['accuracy'])} |")
+    L.append(f"\nHigh-priority F1 by threshold over *all* devices: {tu['hp_f1_by_threshold_all_devices']}")
 
     L.append("\n## 10. Errors by kind and scenario (full pipeline)\n")
     agg: Dict[str, Dict[str, int]] = {}
