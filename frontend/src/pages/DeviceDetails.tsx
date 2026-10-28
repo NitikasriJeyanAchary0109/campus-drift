@@ -17,6 +17,7 @@ import {
   ArrowUpRight,
   X,
 } from 'lucide-react';
+import { LegacyCoexistenceCard, ModeBadge } from '../components/LegacyCoexistenceCard';
 
 interface DeviceDetail {
   id: string;
@@ -33,6 +34,8 @@ interface DeviceDetail {
     criticality_weight: number;
   };
   has_credentials: boolean;
+  collection_mode: string;
+  shadow_mode: boolean;
   latest_snapshot?: {
     id: string;
     collected_at: string;
@@ -206,6 +209,7 @@ export const DeviceDetails: React.FC = () => {
               >
                 {device.status}
               </span>
+              <ModeBadge mode={device.collection_mode} shadow={device.shadow_mode} />
             </div>
             <p className="text-xs text-slate-400 font-mono mt-0.5">UUID: {device.id}</p>
           </div>
@@ -216,7 +220,8 @@ export const DeviceDetails: React.FC = () => {
             <button
               type="button"
               onClick={handlePoll}
-              disabled={isPolling || device.status === 'DECOMMISSIONED'}
+              disabled={isPolling || device.status === 'DECOMMISSIONED' || device.collection_mode !== 'SSH_POLL'}
+              title={device.collection_mode !== 'SSH_POLL' ? 'SSH polling is disabled in this collection mode; upload a configuration instead' : undefined}
               className="inline-flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
             >
               <RefreshCw className={`h-4 w-4 ${isPolling ? 'animate-spin' : ''}`} />
@@ -405,6 +410,16 @@ export const DeviceDetails: React.FC = () => {
           )}
         </div>
       </div>
+
+      <LegacyCoexistenceCard
+        deviceId={device.id}
+        hostname={device.hostname}
+        collectionMode={device.collection_mode}
+        shadowMode={device.shadow_mode}
+        isAdmin={isAdmin}
+        canUpload={isNetEng && device.status !== 'DECOMMISSIONED'}
+        onChanged={() => refetchDevice()}
+      />
 
       {/* Open Drift Events for Device */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">

@@ -49,6 +49,8 @@ class DeviceOut(DeviceBase):
     last_polled_at: Optional[datetime] = None
     device_group: Optional[DeviceGroupOut] = None
     has_credentials: bool = False
+    collection_mode: str = "SSH_POLL"
+    shadow_mode: bool = False
 
 
 class DeviceDetailOut(DeviceOut):
@@ -86,3 +88,42 @@ class PollStatusResponse(BaseModel):
     status: str
     result: Optional[dict] = None
     error: Optional[str] = None
+
+
+COLLECTION_MODES = ("SSH_POLL", "MANUAL_UPLOAD", "PAUSED")
+
+
+class CollectionModeUpdate(BaseModel):
+    collection_mode: Optional[str] = Field(None, pattern="^(SSH_POLL|MANUAL_UPLOAD|PAUSED)$")
+    shadow_mode: Optional[bool] = None
+
+
+class CollectionModeOut(BaseModel):
+    device_id: UUID
+    hostname: str
+    collection_mode: str
+    shadow_mode: bool
+
+
+class ConfigUploadRequest(BaseModel):
+    config_text: str = Field(..., min_length=1, description="Raw 'show running-config' output captured offline")
+    captured_at: Optional[datetime] = Field(
+        None, description="When the config was captured (UTC). Defaults to now; used for change-ticket window matching."
+    )
+    source_filename: Optional[str] = Field(None, max_length=128)
+    note: Optional[str] = Field(None, max_length=256)
+    allow_hostname_mismatch: bool = False
+
+
+class ConfigUploadResponse(BaseModel):
+    device_id: UUID
+    hostname: str
+    snapshot_id: UUID
+    snapshot_status: str
+    collection_method: str
+    captured_at: datetime
+    sha256: str
+    drift_event_id: Optional[UUID] = None
+    drift_label: Optional[str] = None
+    risk_score: Optional[int] = None
+    message: str

@@ -27,6 +27,7 @@ from app.models.drift import DriftEvent, DriftDetail
 from app.models.remediation import RemediationPlan, Approval, RemediationAction, Backup
 from app.models.users import User
 from app.services.collection import resolve_device_endpoint
+from app.services.legacy import assert_remediation_allowed
 from app.services.normalization import normalize_config, values_equal
 from app.services.remediation_templates import (
     render_remediation_commands,
@@ -248,6 +249,9 @@ def apply_remediation_plan(
     device = event.device
     baseline = event.baseline
 
+    # Legacy coexistence: never open a config session to shadow / non-SSH-managed devices
+    assert_remediation_allowed(device)
+
     now = datetime.now(timezone.utc)
     action = RemediationAction(
         remediation_plan_id=plan.id,
@@ -432,6 +436,8 @@ def manual_rollback(db: Session, plan_id: UUID, admin_user: User) -> Remediation
     plan = get_remediation_plan(db, plan_id)
     event = plan.drift_event
     device = event.device
+
+    assert_remediation_allowed(device)
 
     # Find pre-change backup
     backup = (

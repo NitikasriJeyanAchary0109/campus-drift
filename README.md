@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose_v2-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-118%2F118%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-147%2F147%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An enterprise-grade, automated network configuration-drift detection and remediation platform designed for decentralized campus environments (academic lecture halls, student hostels, research laboratories, and administrative offices).
@@ -31,6 +31,7 @@ An enterprise-grade, automated network configuration-drift detection and remedia
   - [2. Triggering Configuration Sweeps](#2-triggering-configuration-sweeps)
   - [3. Ingesting ITSM Change Tickets via Webhook](#3-ingesting-itsm-change-tickets-via-webhook)
   - [4. Generating & Applying Gated Remediation](#4-generating--applying-gated-remediation)
+  - [5. Coexisting with a Legacy Workflow](#5-coexisting-with-a-legacy-workflow)
 - [Where to Get Help & Documentation](#where-to-get-help--documentation)
 - [Who Maintains & Contributes](#who-maintains--contributes)
 
@@ -158,7 +159,7 @@ flowchart TD
 | **Styling** | Tailwind CSS 3.4, Lucide React | Responsive operational dashboard with dark-mode accents |
 | **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
 | **Charts** | Recharts 2.12 | 14-day compliance and drift trendline analytics |
-| **Testing** | pytest, pytest-asyncio, httpx | 118 automated unit and integration tests |
+| **Testing** | pytest, pytest-asyncio, httpx | 147 automated unit and integration tests |
 
 ---
 
@@ -233,7 +234,7 @@ npm run dev
 
 ### Running Automated Tests
 
-Run the complete 118-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
+Run the complete 147-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
 
 ```bash
 # From project root (with postgres & redis running)
@@ -241,7 +242,7 @@ pytest backend/tests -v
 ```
 
 ```text
-================== 118 passed, 3 warnings in ~70s ==================
+================== 147 passed, 3 warnings in ~75s ==================
 ```
 
 ---
@@ -328,11 +329,33 @@ curl -X POST http://localhost:8000/api/remediation/<PLAN_ID>/apply \
   -H "Authorization: Bearer <NETENG_TOKEN>"
 ```
 
+### 5. Coexisting with a Legacy Workflow
+
+Devices that cannot (or should not yet) be polled over SSH can be fed from console captures or existing backup dumps, and any device can be switched to report-only **shadow mode** so the tool never pushes changes:
+
+```bash
+# Upload an offline running-config (NetEng+); same pipeline and scoring as SSH polling
+curl -X POST http://localhost:8000/api/devices/<DEVICE_ID>/config-upload \
+  -H "Authorization: Bearer <NETENG_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"config_text": "<running-config>", "captured_at": "2026-10-20T19:05:00Z", "source_filename": "sw-hostel-01.cfg"}'
+
+# Switch a device to manual-upload + report-only (Admin)
+curl -X PUT http://localhost:8000/api/devices/<DEVICE_ID>/collection-mode \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"collection_mode": "MANUAL_UPLOAD", "shadow_mode": true}'
+
+# Bulk-import a folder of legacy backups (and optionally mine a proposed baseline)
+python scripts/import_legacy.py ./backups --password '<password>' --propose-baseline proposed.yaml --group Hostel
+```
+
+See [docs/legacy-coexistence.md](docs/legacy-coexistence.md) for the staged migration plan, API reference, and error boundaries.
+
 ---
 
 ## Where to Get Help & Documentation
 
 - [architecture.md](architecture.md): Full architectural specification, sequence diagrams, and design records.
+- [docs/legacy-coexistence.md](docs/legacy-coexistence.md): Legacy workflow coexistence, staged migration plan, and rollback to manual control.
 - [docs/itsm-integration.md](docs/itsm-integration.md): Detailed guide for integrating ServiceNow and Jira webhooks with HMAC signatures.
 - [docs/evaluation-report.md](docs/evaluation-report.md): Benchmark results, empirical accuracy metrics, and failure scenarios.
 - [PHASE_COMPLETION_REPORT_35.md](PHASE_COMPLETION_REPORT_35.md): Milestone criteria and test suite breakdown.

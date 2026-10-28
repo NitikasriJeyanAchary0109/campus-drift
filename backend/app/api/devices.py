@@ -20,12 +20,17 @@ from app.schemas.devices import (
     PollTriggerResponse,
     PollStatusResponse,
     SnapshotSummaryOut,
+    CollectionModeUpdate,
+    CollectionModeOut,
+    ConfigUploadRequest,
+    ConfigUploadResponse,
 )
 from celery.result import AsyncResult
 from app.core.celery_app import celery_app
 from app.tasks.collection import poll_device_task
 from app.services.vault import store_device_credential
 from app.services.collection import collect_device_configuration
+from app.services.legacy import upload_manual_configuration, set_collection_mode
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
@@ -69,6 +74,8 @@ def list_devices(
             last_polled_at=d.last_polled_at,
             device_group=d.device_group,
             has_credentials=d.credentials is not None,
+            collection_mode=d.collection_mode,
+            shadow_mode=d.shadow_mode,
         )
         result.append(d_out)
 
@@ -138,6 +145,8 @@ def create_device(
         last_polled_at=device.last_polled_at,
         device_group=device.device_group,
         has_credentials=False,
+        collection_mode=device.collection_mode,
+        shadow_mode=device.shadow_mode,
     )
 
 
@@ -185,6 +194,8 @@ def get_device(
         last_polled_at=device.last_polled_at,
         device_group=device.device_group,
         has_credentials=device.credentials is not None,
+        collection_mode=device.collection_mode,
+        shadow_mode=device.shadow_mode,
         latest_snapshot=snapshot_summary,
     )
 
@@ -241,6 +252,8 @@ def update_device(
         last_polled_at=device.last_polled_at,
         device_group=device.device_group,
         has_credentials=device.credentials is not None,
+        collection_mode=device.collection_mode,
+        shadow_mode=device.shadow_mode,
     )
 
 
@@ -276,6 +289,8 @@ def decommission_device(
         last_polled_at=device.last_polled_at,
         device_group=device.device_group,
         has_credentials=device.credentials is not None,
+        collection_mode=device.collection_mode,
+        shadow_mode=device.shadow_mode,
     )
 
 
@@ -341,6 +356,15 @@ def trigger_device_poll(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot poll a decommissioned device",
+        )
+
+    if device.collection_mode != "SSH_POLL":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Device {device.hostname} is in collection mode {device.collection_mode}; "
+                "SSH polling is disabled. Upload a configuration instead."
+            ),
         )
 
     if device.vendor and device.vendor.lower() in ("openconfig_stub", "openconfig", "gnmi"):
@@ -447,4 +471,59 @@ def get_poll_task_status(
         status=state,
         result=result_data,
         error=error_msg,
+    )
+
+
+@router.post(
+    "/{device_id}/config-upload",
+    response_model=ConfigUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def upload_device_configuration(
+    device_id: UUID,
+    payload: ConfigUploadRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_neteng),
+):
+    """
+    Legacy coexistence: ingest an offline 'show running-config' dump (console capture, TFTP/Oxidized
+    backup) through the same normalize -> drift -> score -> ticket pipeline as SSH polling.
+    Role: NetEng+
+    """
+    result = upload_manual_configuration(
+        db=db,
+        device_id=device_id,
+        config_text=payload.config_text,
+        user=current_user,
+        captured_at=payload.captured_at,
+        source_filename=payload.source_filename,
+        note=payload.note,
+        allow_hostname_mismatch=payload.allow_hostname_mismatch,
+    )
+    return ConfigUploadResponse(**result)
+
+
+@router.put("/{device_id}/collection-mode", response_model=CollectionModeOut)
+def update_collection_mode(
+    device_id: UUID,
+    payload: CollectionModeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Set how a device is fed (SSH_POLL / MANUAL_UPLOAD / PAUSED) and whether it is report-only (shadow_mode).
+    Role: Admin only
+    """
+    device = set_collection_mode(
+        db=db,
+        device_id=device_id,
+        user=current_user,
+        collection_mode=payload.collection_mode,
+        shadow_mode=payload.shadow_mode,
+    )
+    return CollectionModeOut(
+        device_id=device.id,
+        hostname=device.hostname,
+        collection_mode=device.collection_mode,
+        shadow_mode=device.shadow_mode,
     )
