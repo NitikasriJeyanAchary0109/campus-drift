@@ -10,12 +10,13 @@ Implements the end-to-end Remediation and Rollback workflow per §6, §8, §9, �
 6. Automated rollback on verification failure: restores backup, re-verifies, raises CRITICAL alert, and logs audit.
 7. Admin manual rollback trigger.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from netmiko import ConnectHandler
+from netmiko.exceptions import NetmikoBaseException
 from sqlalchemy.orm import Session
 
 from app.models.alerts import Alert
@@ -28,6 +29,7 @@ from app.models.remediation import RemediationPlan, Approval, RemediationAction,
 from app.models.users import User
 from app.services.collection import resolve_device_endpoint
 from app.services.legacy import assert_remediation_allowed
+from app.services.locks import device_lock
 from app.services.normalization import normalize_config, values_equal
 from app.services.remediation_templates import (
     render_remediation_commands,
@@ -214,6 +216,149 @@ def _connect_to_device(db: Session, device: Device):
     return ConnectHandler(**device_params)
 
 
+APPLY_STALE_AFTER = timedelta(minutes=15)   # an APPLYING claim older than this is considered abandoned (crashed worker)
+ROLLBACK_RECONNECT_ATTEMPTS = 2             # fresh sessions tried if the original one is dead during a rollback
+_PRE_CHANGE_ERRORS = (ConnectionError, TimeoutError, OSError, EOFError, NetmikoBaseException)
+
+
+def _naive_utc(dt: datetime) -> datetime:
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _significant_lines(config: str) -> List[str]:
+    skip = ("building configuration", "current configuration", "version ", "end")
+    out = []
+    for raw in config.splitlines():
+        line = raw.strip()
+        if line and not line.startswith("!") and not line.lower().startswith(skip):
+            out.append(line)
+    return out
+
+
+def _configs_equivalent(current: str, backup: str, vendor: str) -> bool:
+    """True when two running-configs mean the same thing (normalized trees equal; line sets if unparsable)."""
+    try:
+        return normalize_config(current, vendor) == normalize_config(backup, vendor)
+    except Exception:
+        return sorted(set(_significant_lines(current))) == sorted(set(_significant_lines(backup)))
+
+
+def _execute_rollback(conn: Any, backup_config: str, vendor: str = "cisco_ios") -> None:
+    """
+    Push the stored pre-change configuration back to the device. Transport failures propagate:
+    a rollback that did not run must never be reported as one that did.
+    Lab simulators restore exactly via 'simulator-reset-pristine'; real IOS answers '% Invalid input'
+    (no exception), so when the device is still different afterwards the backup's commands are replayed in order.
+    The caller verifies the result either way.
+    """
+    conn.send_command("simulator-reset-pristine")
+    if _configs_equivalent(conn.send_command("show running-config"), backup_config, vendor):
+        return  # already restored; replaying would only reorder lines
+    lines = _significant_lines(backup_config)
+    if lines:
+        conn.send_config_set(lines)
+
+
+def restore_and_verify(db: Session, device: Device, backup_config: str, conn: Any = None) -> Tuple[bool, str]:
+    """
+    Restore ``device`` to ``backup_config`` and prove it: re-read the running-config and compare it with the backup.
+    The original session is tried first; if it is dead, fresh sessions are opened (a dropped SSH session is the
+    most likely reason a remediation failed in the first place). Returns (verified, detail).
+    """
+    detail = "no rollback attempt was made"
+    opened: List[Any] = []
+    try:
+        for attempt in range(1 + ROLLBACK_RECONNECT_ATTEMPTS):
+            try:
+                c = conn if (attempt == 0 and conn is not None) else None
+                if c is None:
+                    c = _connect_to_device(db, device)
+                    opened.append(c)
+                _execute_rollback(c, backup_config, device.vendor)
+                current = c.send_command("show running-config")
+                if _configs_equivalent(current, backup_config, device.vendor):
+                    return True, f"restored and verified against the pre-change backup (attempt {attempt + 1})"
+                detail = "device configuration still differs from the pre-change backup after the restore"
+            except Exception as e:  # transport failure, dead session, refused connection ...
+                detail = f"{type(e).__name__}: {e}"
+        return False, detail
+    finally:
+        for c in opened:
+            try:
+                c.disconnect()
+            except Exception:
+                pass
+
+
+def _claim_plan(db: Session, plan: RemediationPlan, user_id: UUID) -> str:
+    """
+    Atomically move the plan to APPLYING so two concurrent requests cannot push the same plan twice.
+    Returns the previous status. An APPLYING claim older than APPLY_STALE_AFTER is treated as abandoned.
+    """
+    if plan.status == "APPLYING":
+        stale = (
+            db.query(RemediationAction)
+            .filter(RemediationAction.remediation_plan_id == plan.id, RemediationAction.result == "IN_PROGRESS")
+            .order_by(RemediationAction.executed_at.desc())
+            .first()
+        )
+        age_ok = stale is not None and _naive_utc(datetime.now(timezone.utc)) - _naive_utc(stale.executed_at) > APPLY_STALE_AFTER
+        if age_ok:
+            stale.result = "ABORTED"
+            plan.status = "FAILED"
+            db.add(AuditLog(user_id=user_id, action="REMEDIATION_STALE_CLAIM_RELEASED", target_type="remediation",
+                            target_id=stale.id, after_state={"plan_id": str(plan.id), "abandoned_action": str(stale.id)}))
+            db.commit()
+    previous = plan.status
+    claimed = (
+        db.query(RemediationPlan)
+        .filter(RemediationPlan.id == plan.id, RemediationPlan.status.notin_(("APPLIED", "APPLYING")))
+        .update({"status": "APPLYING"}, synchronize_session=False)
+    )
+    db.commit()
+    if not claimed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Remediation plan is already being applied by another request.",
+        )
+    db.refresh(plan)
+    return previous
+
+
+def _finish_rollback(
+    db: Session, plan: RemediationPlan, action: RemediationAction, device: Device, user_id: UUID,
+    backup: Optional[Backup], verified: bool, detail: str, reason: str, extra: Optional[dict] = None,
+) -> None:
+    """Record the outcome of an automatic rollback: verified restore -> ROLLED_BACK, otherwise ROLLBACK_FAILED."""
+    backup_id = str(backup.id) if backup else None
+    is_verification = reason.startswith("verification")
+    headline = (
+        f"CRITICAL: Remediation verification failed on {device.hostname}"
+        if is_verification else f"Remediation error on {device.hostname}: {reason.removeprefix('error during remediation: ')}"
+    )
+    paths = f" Failed paths: {extra['failed_paths']}" if extra and "failed_paths" in extra else ""
+    if verified:
+        action.result = "ROLLED_BACK"
+        plan.status = "FAILED"
+        message = f"{headline}. Automated rollback ran and was verified against the pre-change backup.{paths}"
+        audit_action, outcome = "REMEDIATION_ROLLED_BACK", "SUCCESSFULLY_RESTORED_TO_BACKUP"
+    else:
+        action.result = "ROLLBACK_FAILED"
+        plan.status = "ROLLBACK_FAILED"
+        message = (f"CRITICAL: {headline}. The automated rollback could NOT be verified ({detail}). "
+                   f"The device configuration state is UNKNOWN: restore it manually from backup {backup_id} on the console.{paths}")
+        audit_action, outcome = "REMEDIATION_ROLLBACK_FAILED", "NOT_VERIFIED"
+    db.add(Alert(type="CRITICAL_DRIFT", related_id=action.id, message=message))
+    db.add(AuditLog(
+        user_id=user_id, action=audit_action, target_type="remediation", target_id=action.id,
+        after_state={"plan_id": str(plan.id), "device": device.hostname,
+                     "failure_reason": "Verification failed post-change" if is_verification else reason,
+                     "rollback_result": outcome, "rollback_verified": verified, "rollback_detail": detail,
+                     "backup_id": backup_id, **(extra or {})},
+    ))
+    db.commit()
+
+
 def apply_remediation_plan(
     db: Session,
     plan_id: UUID,
@@ -221,13 +366,15 @@ def apply_remediation_plan(
     force_fail_verification: bool = False,
 ) -> RemediationAction:
     """
-    Execute the Backup, Apply, Verify, and Auto-Rollback pipeline per §6:
-    1. Enforce prior APPROVED approval record at service layer.
-    2. Capture full pre-change running config and store in backups table.
-    3. Push approved commands via Netmiko.
-    4. Re-pull config, normalize, and verify targeted key paths match baseline.
-    5. On PASS: mark drift_event RESOLVED, plan APPLIED, action SUCCESS.
-    6. On FAIL: auto-rollback (restore backup config), re-verify, mark ROLLED_BACK, raise CRITICAL alert.
+    Execute the Backup, Apply, Verify, and Auto-Rollback pipeline per §6.
+
+    Outcomes (RemediationAction.result / RemediationPlan.status):
+      SUCCESS          change applied and verified                       / APPLIED
+      ROLLED_BACK      change failed; restore verified against backup    / FAILED  (retry possible)
+      ROLLBACK_FAILED  change failed and the restore could NOT be proven / ROLLBACK_FAILED (critical alert, manual fix)
+      ABORTED          failed before any change was made (no session, empty backup) / FAILED (HTTP 502)
+    Guards: approval gate (409), shadow/non-SSH devices (409), one apply per plan at a time (409),
+    one operation per device at a time (409), empty running-config refused as a backup.
     """
     plan = get_remediation_plan(db, plan_id)
 
@@ -247,11 +394,32 @@ def apply_remediation_plan(
 
     event = plan.drift_event
     device = event.device
-    baseline = event.baseline
 
     # Legacy coexistence: never open a config session to shadow / non-SSH-managed devices
     assert_remediation_allowed(device)
 
+    previous_status = _claim_plan(db, plan, user_id)
+    try:
+        with device_lock(db, device.id) as acquired:
+            if not acquired:
+                plan.status = previous_status
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Device {device.hostname} is busy (a poll or another remediation is running); retry shortly.",
+                )
+            return _apply_locked(db, plan, event, device, user_id, force_fail_verification)
+    finally:
+        db.rollback()  # never leave a failed transaction behind
+        db.refresh(plan)
+        if plan.status == "APPLYING":  # unexpected escape: do not leave the plan claimed forever
+            plan.status = "FAILED"
+            db.commit()
+
+
+def _apply_locked(
+    db: Session, plan: RemediationPlan, event: DriftEvent, device: Device, user_id: UUID, force_fail_verification: bool,
+) -> RemediationAction:
     now = datetime.now(timezone.utc)
     action = RemediationAction(
         remediation_plan_id=plan.id,
@@ -260,17 +428,20 @@ def apply_remediation_plan(
         executed_at=now,
     )
     db.add(action)
-    db.flush()
+    db.commit()  # visible to other sessions; also lets a crashed claim be detected as stale
 
     conn = None
     backup = None
     pre_change_config = ""
+    change_started = False
 
     try:
         conn = _connect_to_device(db, device)
 
-        # 2. Step (a) Pre-Change Backup (§6)
+        # 2. Step (a) Pre-Change Backup (§6): refuse to touch a device without a usable backup
         pre_change_config = conn.send_command("show running-config")
+        if not pre_change_config or not pre_change_config.strip():
+            raise RuntimeError("device returned an empty running-config; refusing to change it without a usable backup")
         backup = Backup(
             device_id=device.id,
             config_blob=pre_change_config,
@@ -281,6 +452,7 @@ def apply_remediation_plan(
         db.commit()
 
         # 3. Step (b) Apply Approved Commands via Netmiko
+        change_started = True  # from here on the device may be partially changed
         conn.send_config_set(plan.proposed_commands)
 
         # 4. Step (c) Re-pull Running Config for Verification
@@ -292,7 +464,7 @@ def apply_remediation_plan(
             device_id=device.id,
             raw_config=post_change_config,
             normalized_json=norm_post,
-            collected_at=datetime.now(timezone.utc),
+            collected_at=_naive_utc(datetime.now(timezone.utc)),
             collection_method="SSH",
             status="SUCCESS",
         )
@@ -301,7 +473,6 @@ def apply_remediation_plan(
         action.verification_snapshot_id = verification_snapshot.id
 
         # 5. Targeted Key-Path Verification
-        # Check that each key path in event.details now matches expected value
         verification_passed = not force_fail_verification
         failed_paths = []
 
@@ -310,9 +481,7 @@ def apply_remediation_plan(
                 rule = detail.rule
                 if not rule:
                     continue
-                # Traverse norm_post to find actual value at key_path
                 actual_val = _lookup_json_path(norm_post, detail.key_path)
-                # Check expectation
                 if rule.rule_type == "EXACT":
                     if not values_equal(actual_val, rule.expected_value):
                         verification_passed = False
@@ -328,12 +497,10 @@ def apply_remediation_plan(
 
         # 6. Branch on Verification Result
         if verification_passed:
-            # Verification PASS (§6)
             action.result = "SUCCESS"
             plan.status = "APPLIED"
             event.status = "RESOLVED"
-
-            audit = AuditLog(
+            db.add(AuditLog(
                 user_id=user_id,
                 action="REMEDIATION_SUCCESS",
                 target_type="remediation",
@@ -345,79 +512,45 @@ def apply_remediation_plan(
                     "verification_snapshot_id": str(verification_snapshot.id),
                     "result": "SUCCESS",
                 },
-            )
-            db.add(audit)
+            ))
             db.commit()
             return action
 
-        else:
-            # Verification FAIL -> Automatic Rollback (§6)
-            _execute_rollback(conn, pre_change_config)
+        # Verification FAIL -> Automatic Rollback, then PROVE the restore (§6)
+        verified, detail_msg = restore_and_verify(db, device, pre_change_config, conn)
+        _finish_rollback(
+            db, plan, action, device, user_id, backup, verified, detail_msg,
+            reason="verification failed post-change",
+            extra={"failed_paths": str(failed_paths or "forced verification failure")},
+        )
+        return action
 
-            # Re-verify rollback state
-            rolled_back_cfg = conn.send_command("show running-config")
-
-            action.result = "ROLLED_BACK"
-            plan.status = "FAILED"
-
-            # Raise CRITICAL Alert per §6 & §14
-            alert = Alert(
-                type="CRITICAL_DRIFT",
-                related_id=action.id,
-                message=(
-                    f"CRITICAL: Remediation verification failed on {device.hostname}. "
-                    f"Automated rollback triggered and verified against pre-change backup. "
-                    f"Failed paths: {failed_paths or 'Forced verification failure'}"
-                ),
-            )
-            db.add(alert)
-
-            audit = AuditLog(
-                user_id=user_id,
-                action="REMEDIATION_ROLLED_BACK",
-                target_type="remediation",
-                target_id=action.id,
-                after_state={
-                    "plan_id": str(plan.id),
-                    "device": device.hostname,
-                    "failure_reason": "Verification failed post-change",
-                    "failed_paths": str(failed_paths),
-                    "rollback_result": "SUCCESSFULLY_RESTORED_TO_BACKUP",
-                    "backup_id": str(backup.id) if backup else None,
-                },
-            )
-            db.add(audit)
-            db.commit()
-            return action
-
+    except HTTPException:
+        raise
     except Exception as e:
-        # Unexpected push/connection failure -> Trigger Rollback if backup exists
-        if conn and pre_change_config:
-            try:
-                _execute_rollback(conn, pre_change_config)
-            except Exception:
-                pass
+        db.rollback()
+        if not change_started:
+            # Nothing was changed on the device: this is an abort, not a rollback
+            action.result = "ABORTED"
+            plan.status = "FAILED"
+            db.add(Alert(type="REMEDIATION_FAILED", related_id=action.id,
+                         message=f"Remediation of {device.hostname} aborted before any change was made: {e}"))
+            db.add(AuditLog(user_id=user_id, action="REMEDIATION_ABORTED", target_type="remediation", target_id=action.id,
+                            after_state={"error": str(e), "result": "ABORTED", "changes_made": False}))
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY if isinstance(e, _PRE_CHANGE_ERRORS) else status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Remediation aborted before any change was made: {e}",
+            ) from e
 
-        action.result = "ROLLED_BACK"
-        plan.status = "FAILED"
-        alert_err = Alert(
-            type="CRITICAL_DRIFT",
-            related_id=action.id,
-            message=f"Remediation error on {device.hostname}: {e}. Automatic rollback triggered.",
-        )
-        audit_err = AuditLog(
-            user_id=user_id,
-            action="REMEDIATION_ERROR_ROLLBACK",
-            target_type="remediation",
-            target_id=action.id,
-            after_state={"error": str(e), "result": "ROLLED_BACK"},
-        )
-        db.add(alert_err)
-        db.add(audit_err)
-        db.commit()
+        # The device may be partially changed: restore from the backup (reconnecting if needed) and verify
+        verified, detail_msg = restore_and_verify(db, device, pre_change_config, conn)
+        _finish_rollback(db, plan, action, device, user_id, backup, verified, detail_msg, reason=f"error during remediation: {e}",
+                         extra={"error": str(e)})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Remediation execution failed: {e}. Automatic rollback attempted.",
+            detail=(f"Remediation execution failed: {e}. Rollback verified." if verified
+                    else f"Remediation execution failed: {e}. ROLLBACK COULD NOT BE VERIFIED: manual intervention required."),
         ) from e
 
     finally:
@@ -430,8 +563,8 @@ def apply_remediation_plan(
 
 def manual_rollback(db: Session, plan_id: UUID, admin_user: User) -> RemediationAction:
     """
-    Admin-only manual rollback trigger per §9:
-    Restores the device's configuration to the pre-change backup associated with the plan.
+    Admin-only manual rollback trigger per §9: restore the device to the plan's pre-change backup and verify it.
+    ROLLED_BACK is only reported when the restored configuration was re-read and matches the backup.
     """
     plan = get_remediation_plan(db, plan_id)
     event = plan.drift_event
@@ -453,73 +586,49 @@ def manual_rollback(db: Session, plan_id: UUID, admin_user: User) -> Remediation
             detail=f"No backup configuration found for remediation plan {plan_id}",
         )
 
-    now = datetime.now(timezone.utc)
-    action = RemediationAction(
-        remediation_plan_id=plan.id,
-        executed_commands=["MANUAL_ROLLBACK_RESTORE_BACKUP"],
-        result="IN_PROGRESS",
-        executed_at=now,
-    )
-    db.add(action)
-    db.flush()
-
-    conn = None
-    try:
-        conn = _connect_to_device(db, device)
-        _execute_rollback(conn, backup.config_blob)
-
-        action.result = "ROLLED_BACK"
-        plan.status = "ROLLED_BACK"
-        event.status = "OPEN"
-
-        audit = AuditLog(
-            user_id=admin_user.id,
-            action="MANUAL_ROLLBACK",
-            target_type="remediation",
-            target_id=action.id,
-            after_state={
-                "plan_id": str(plan.id),
-                "device": device.hostname,
-                "backup_id": str(backup.id),
-                "result": "ROLLED_BACK",
-            },
+    with device_lock(db, device.id) as acquired:
+        if not acquired:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Device {device.hostname} is busy (a poll or remediation is running); retry shortly.",
+            )
+        action = RemediationAction(
+            remediation_plan_id=plan.id,
+            executed_commands=["MANUAL_ROLLBACK_RESTORE_BACKUP"],
+            result="IN_PROGRESS",
+            executed_at=datetime.now(timezone.utc),
         )
-        db.add(audit)
+        db.add(action)
         db.commit()
-        return action
 
-    except Exception as e:
+        verified, detail_msg = restore_and_verify(db, device, backup.config_blob)
+        if verified:
+            action.result = "ROLLED_BACK"
+            plan.status = "ROLLED_BACK"
+            event.status = "OPEN"
+            db.add(AuditLog(
+                user_id=admin_user.id, action="MANUAL_ROLLBACK", target_type="remediation", target_id=action.id,
+                after_state={"plan_id": str(plan.id), "device": device.hostname, "backup_id": str(backup.id),
+                             "result": "ROLLED_BACK", "rollback_detail": detail_msg},
+            ))
+            db.commit()
+            return action
+
         action.result = "ROLLBACK_FAILED"
+        plan.status = "ROLLBACK_FAILED"
+        db.add(Alert(type="CRITICAL_DRIFT", related_id=action.id,
+                     message=(f"CRITICAL: Manual rollback on {device.hostname} could NOT be verified ({detail_msg}). "
+                              f"Device configuration state is UNKNOWN; restore backup {backup.id} on the console.")))
+        db.add(AuditLog(
+            user_id=admin_user.id, action="MANUAL_ROLLBACK_FAILED", target_type="remediation", target_id=action.id,
+            after_state={"plan_id": str(plan.id), "device": device.hostname, "backup_id": str(backup.id),
+                         "result": "ROLLBACK_FAILED", "rollback_detail": detail_msg},
+        ))
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Manual rollback failed: {e}",
-        ) from e
-    finally:
-        if conn:
-            try:
-                conn.disconnect()
-            except Exception:
-                pass
-
-
-def _execute_rollback(conn: Any, backup_config: str):
-    """
-    Push stored backup configuration back to the device.
-    In Cisco IOS / simulator, we restore the lines or trigger pristine reload.
-    """
-    # For our simulated devices, simulator-reset-pristine or restoring backup lines:
-    lines = [l.strip() for l in backup_config.splitlines() if l.strip() and not l.startswith("!")]
-    # Check if this is our simulator: send reset or apply backup lines
-    try:
-        conn.send_command("simulator-reset-pristine")
-    except Exception:
-        pass
-    # Also push key lines if needed
-    try:
-        conn.send_config_set(lines[:30])
-    except Exception:
-        pass
+            detail=f"Manual rollback could not be verified: {detail_msg}",
+        )
 
 
 def _lookup_json_path(tree: dict, key_path: str) -> Any:

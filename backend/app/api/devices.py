@@ -26,6 +26,8 @@ from app.schemas.devices import (
     ConfigUploadResponse,
 )
 from celery.result import AsyncResult
+from kombu.exceptions import OperationalError as BrokerError
+from redis.exceptions import RedisError
 from app.core.celery_app import celery_app
 from app.tasks.collection import poll_device_task
 from app.services.vault import store_device_credential
@@ -397,6 +399,11 @@ def trigger_device_poll(
             message=msg,
             timestamp=ts,
             task_id=task_id,
+        )
+    except (BrokerError, RedisError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Task queue unavailable; the poll for {device.hostname} was not scheduled: {e}",
         )
     except (ConnectionError, PermissionError) as e:
         raise HTTPException(

@@ -8,6 +8,10 @@ from app.core.config import settings
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+elif settings.DATABASE_URL.startswith("postgresql"):
+    # Timestamps are stored as naive UTC; pin the session timezone so aware datetimes convert identically
+    # whatever the server's default TimeZone is (ticket windows depend on it).
+    connect_args = {"options": "-c timezone=utc"}
 
 engine = create_engine(
     settings.DATABASE_URL,

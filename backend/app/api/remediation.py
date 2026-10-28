@@ -143,7 +143,12 @@ def api_apply_plan(
         force_fail_verification=force_fail,
     )
     passed = action.result == "SUCCESS"
-    msg = "Remediation applied and verified successfully." if passed else "Verification failed: automated rollback executed."
+    if passed:
+        msg = "Remediation applied and verified successfully."
+    elif action.result == "ROLLBACK_FAILED":
+        msg = "CRITICAL: verification failed and the automated rollback could NOT be verified. Device state is unknown: restore the pre-change backup manually."
+    else:
+        msg = "Verification failed: automated rollback executed and verified against the pre-change backup."
     return ApplyRemediationResponse(
         message=msg,
         action_id=action.id,

@@ -9,6 +9,7 @@ from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.models.devices import Device
 from app.services.collection import collect_device_configuration
+from app.services.locks import DeviceBusyError
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,13 @@ def poll_device_task(
             "device_id": device_id,
             "collected_at": snapshot.collected_at.isoformat() if snapshot.collected_at else None,
             "message": f"Configuration collected (snapshot: {snapshot.id}) with status {snapshot.status}",
+        }
+    except DeviceBusyError as exc:
+        logger.info("Skipping poll of device %s: %s", device_id, exc)
+        return {
+            "status": "SKIPPED",
+            "device_id": device_id,
+            "message": f"Poll skipped: {exc}",
         }
     except Exception as exc:
         logger.error("Failed async poll task for device %s: %s", device_id, exc)

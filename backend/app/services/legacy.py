@@ -55,7 +55,14 @@ def _to_utc(value: datetime) -> datetime:
 
 def validate_config_text(config_text: str) -> str:
     """Reject payloads that must never be mistaken for a (compliant) configuration."""
-    if len(config_text.encode("utf-8", errors="replace")) > MAX_UPLOAD_BYTES:
+    try:
+        config_text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise HTTPException(
+            status_code=422,
+            detail="Upload contains invalid Unicode (unpaired surrogate characters); re-export the capture as UTF-8 text",
+        )
+    if len(config_text.encode("utf-8")) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
             detail=f"Configuration exceeds the {MAX_UPLOAD_BYTES} byte upload limit",

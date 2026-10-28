@@ -18,6 +18,7 @@ from app.models.devices import Device
 from app.models.configurations import ConfigurationSnapshot
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
+from app.services.locks import DeviceBusyError, device_lock
 from app.services.vault import get_device_credential
 from app.services.normalization import normalize_config, ParseError
 
@@ -47,7 +48,52 @@ def resolve_device_endpoint(device: Device) -> Tuple[str, int]:
     return device.ip_address, 22
 
 
+def _naive_utc(dt: datetime) -> datetime:
+    return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def _raise_device_down_alert(db: Session, device: Device, message: str) -> None:
+    """One open DEVICE_DOWN alert per device: a switch that stays down must not raise a new alert every poll."""
+    existing = (
+        db.query(Alert)
+        .filter(Alert.type == "DEVICE_DOWN", Alert.related_id == device.id, Alert.acknowledged == False)  # noqa: E712
+        .first()
+    )
+    if not existing:
+        db.add(Alert(type="DEVICE_DOWN", related_id=device.id, message=message))
+
+
+def _acknowledge_device_down_alerts(db: Session, device: Device, user_id: Optional[UUID]) -> None:
+    """A successful collection means the device is back: close its open DEVICE_DOWN alerts."""
+    open_alerts = (
+        db.query(Alert)
+        .filter(Alert.type == "DEVICE_DOWN", Alert.related_id == device.id, Alert.acknowledged == False)  # noqa: E712
+        .all()
+    )
+    for a in open_alerts:
+        a.acknowledged = True
+    if open_alerts:
+        db.add(AuditLog(user_id=user_id, action="DEVICE_RECOVERED", target_type="device", target_id=device.id,
+                        after_state={"acknowledged_alerts": len(open_alerts)}))
+
+
 def collect_device_configuration(
+    db: Session,
+    device_id: UUID,
+    triggered_by_user_id: Optional[UUID] = None,
+) -> ConfigurationSnapshot:
+    """
+    Collect a device's configuration while holding the per-device lock, so two workers never poll the same
+    device at once and a poll never reads a device that a remediation is in the middle of changing.
+    Raises DeviceBusyError when another poll or remediation holds the device.
+    """
+    with device_lock(db, device_id) as acquired:
+        if not acquired:
+            raise DeviceBusyError(f"Device {device_id} is busy (another poll or a remediation is running)")
+        return _collect_device_configuration(db, device_id, triggered_by_user_id)
+
+
+def _collect_device_configuration(
     db: Session,
     device_id: UUID,
     triggered_by_user_id: Optional[UUID] = None,
@@ -84,11 +130,7 @@ def collect_device_configuration(
     cred_tuple = get_device_credential(db, device.id)
     if not cred_tuple:
         device.status = "UNREACHABLE"
-        alert = Alert(
-            type="DEVICE_DOWN",
-            related_id=device.id,
-            message=f"Collection failed for {device.hostname}: Missing credentials in vault",
-        )
+        message = f"Collection failed for {device.hostname}: Missing credentials in vault"
         audit = AuditLog(
             user_id=triggered_by_user_id,
             action="COLLECT_FAILED",
@@ -96,7 +138,7 @@ def collect_device_configuration(
             target_id=device.id,
             after_state={"error": "NO_CREDENTIALS"},
         )
-        db.add(alert)
+        _raise_device_down_alert(db, device, message)
         db.add(audit)
         db.commit()
         raise ConnectionError(f"No credentials found for device {device.hostname}")
@@ -126,11 +168,7 @@ def collect_device_configuration(
         raw_config = conn.send_command("show running-config")
     except NetmikoTimeoutException as e:
         device.status = "UNREACHABLE"
-        alert = Alert(
-            type="DEVICE_DOWN",
-            related_id=device.id,
-            message=f"SSH timeout connecting to {device.hostname} at {host}:{port}: {e}",
-        )
+        message = f"SSH timeout connecting to {device.hostname} at {host}:{port}: {e}"
         audit = AuditLog(
             user_id=triggered_by_user_id,
             action="COLLECT_TIMEOUT",
@@ -138,18 +176,14 @@ def collect_device_configuration(
             target_id=device.id,
             after_state={"error": "TIMEOUT", "endpoint": f"{host}:{port}"},
         )
-        db.add(alert)
+        _raise_device_down_alert(db, device, message)
         db.add(audit)
         db.commit()
         raise ConnectionError(f"SSH timeout connecting to {device.hostname} ({host}:{port})") from e
 
     except NetmikoAuthenticationException as e:
         device.status = "UNREACHABLE"
-        alert = Alert(
-            type="DEVICE_DOWN",
-            related_id=device.id,
-            message=f"SSH authentication failed for {device.hostname} with user '{username}': {e}",
-        )
+        message = f"SSH authentication failed for {device.hostname} with user '{username}': {e}"
         audit = AuditLog(
             user_id=triggered_by_user_id,
             action="AUTH_FAILURE",
@@ -157,18 +191,14 @@ def collect_device_configuration(
             target_id=device.id,
             after_state={"error": "AUTH_FAILURE", "username": username},
         )
-        db.add(alert)
+        _raise_device_down_alert(db, device, message)
         db.add(audit)
         db.commit()
         raise PermissionError(f"Authentication failed for {device.hostname}") from e
 
     except Exception as e:
         device.status = "UNREACHABLE"
-        alert = Alert(
-            type="DEVICE_DOWN",
-            related_id=device.id,
-            message=f"Connection error to {device.hostname}: {e}",
-        )
+        message = f"Connection error to {device.hostname}: {e}"
         audit = AuditLog(
             user_id=triggered_by_user_id,
             action="COLLECT_ERROR",
@@ -176,7 +206,7 @@ def collect_device_configuration(
             target_id=device.id,
             after_state={"error": str(e)},
         )
-        db.add(alert)
+        _raise_device_down_alert(db, device, message)
         db.add(audit)
         db.commit()
         raise ConnectionError(f"Failed to connect to {device.hostname}: {e}") from e
@@ -218,10 +248,13 @@ def ingest_raw_configuration(
     """
     snapshot_status = "SUCCESS"
     normalized_json = {}
+    was_down = device.status == "UNREACHABLE"
     try:
         normalized_json = normalize_config(raw_config, device.vendor)
         if mark_online:
             device.status = "ONLINE"
+            if was_down:
+                _acknowledge_device_down_alerts(db, device, triggered_by_user_id)
     except ParseError as pe:
         snapshot_status = "PARSE_ERROR"
         normalized_json = {"status": "PARSE_ERROR", "error": str(pe)}
@@ -246,7 +279,7 @@ def ingest_raw_configuration(
         device_id=device.id,
         raw_config=raw_config,
         normalized_json=normalized_json,
-        collected_at=collected_at or now,
+        collected_at=_naive_utc(collected_at or now),  # stored as naive UTC whatever the DB session timezone is
         collection_method=collection_method,
         status=snapshot_status,
     )
