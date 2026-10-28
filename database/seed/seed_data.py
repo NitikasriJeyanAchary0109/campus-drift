@@ -89,6 +89,19 @@ DEVICES_DATA = [
 ]
 
 
+def _rationale(key_path: str) -> str:
+    """Plain-language 'why it matters' shown to reviewers and in evidence bundles."""
+    if "transport_input" in key_path:
+        return "Cleartext Telnet must not be enabled on VTY lines; SSH is the only approved management transport."
+    if key_path.startswith("snmp.community"):
+        return "The default 'public' SNMP community exposes device state to any host on the network."
+    if "port_security" in key_path:
+        return "Port security on edge ports stops rogue switches and MAC flooding."
+    if key_path.startswith("ntp."):
+        return "Devices must sync time only from the institutional NTP server so security logs can be correlated."
+    return "Part of the approved baseline for this device group."
+
+
 def seed_database():
     print("🌱 Starting database seed...")
     db = SessionLocal()
@@ -302,7 +315,7 @@ def seed_database():
                         name=b_seed["name"],
                         device_group_id=group.id,
                         vendor=b_seed["vendor"],
-                        rules=[BaselineRuleCreate(**r) for r in b_seed["rules"]],
+                        rules=[BaselineRuleCreate(**{"description": _rationale(r["key_path"]), **r}) for r in b_seed["rules"]],
                     )
                     b_obj = create_baseline(
                         db=db,

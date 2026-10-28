@@ -11,8 +11,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -53,3 +53,8 @@ postgres_data/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Validation sessions (facilitator-only / runtime)
+evaluation/validation/session_key.json
+.validation_pids
+.validation_*.log

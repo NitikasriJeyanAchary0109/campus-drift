@@ -1,3 +1,4 @@
+import { labelKey } from '../lib/labels';
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -34,7 +35,7 @@ export const DriftEvents: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [selectedLabel, setSelectedLabel] = useState('ALL');
-  const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedStatus, setSelectedStatus] = useState(initialDeviceId ? 'ALL' : 'OPEN');  // triage view by default; a device's own history shows everything
   const [minScore, setMinScore] = useState<number>(0);
 
   const {
@@ -59,7 +60,7 @@ export const DriftEvents: React.FC = () => {
   });
 
   const getTaxonomyBadge = (label: string) => {
-    switch (label) {
+    switch (labelKey(label)) {
       case 'Non-Compliant':
         return 'bg-rose-100 text-rose-800 border-rose-300 font-semibold';
       case 'Drift-Unauthorized-High':
@@ -104,6 +105,10 @@ export const DriftEvents: React.FC = () => {
       ev.label.toLowerCase().includes(search.toLowerCase()) ||
       (ev.matched_ticket_ref || '').toLowerCase().includes(search.toLowerCase());
     return matchesSearch;
+  }).sort((a, b) => {
+    // Triage order: open events first, highest risk first, newest first
+    const open = (e: DriftEvent) => (e.status === 'OPEN' ? 1 : 0);
+    return open(b) - open(a) || b.risk_score - a.risk_score || b.detected_at.localeCompare(a.detected_at);
   });
 
   return (
@@ -161,11 +166,11 @@ export const DriftEvents: React.FC = () => {
             className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 bg-slate-50 focus:outline-none focus:border-sky-500"
           >
             <option value="ALL">All Classifications</option>
-            <option value="Non-Compliant">Non-Compliant (Hard Rule)</option>
+            <option value="Non-Compliant">Non-Compliant (Critical, hard rule)</option>
             <option value="Drift-Unauthorized-High">Drift-Unauthorized-High (80-94)</option>
             <option value="Drift-Unauthorized-Medium">Drift-Unauthorized-Medium (50-79)</option>
             <option value="Drift-Authorized">Drift-Authorized (Ticket-covered)</option>
-            <option value="Drift-Low">Drift-Low (&lt;50)</option>
+            <option value="Drift-Unauthorized-Low">Drift-Unauthorized-Low (&lt;50)</option>
             <option value="NO_BASELINE">NO_BASELINE (Coverage Gap)</option>
           </select>
 

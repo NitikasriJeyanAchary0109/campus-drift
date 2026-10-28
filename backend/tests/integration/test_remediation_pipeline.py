@@ -172,7 +172,7 @@ def test_remediation_happy_path_with_device_verification(db_session, tokens):
     res_appr = client.post(
         f"/api/approvals/{plan_id}",
         json={"decision": "APPROVED", "comment": "Approved during scheduled maintenance window"},
-        headers=neteng_headers,
+        headers={"Authorization": f"Bearer {tokens['admin']}"},
     )
     assert res_appr.status_code == 201
     assert res_appr.json()["decision"] == "APPROVED"
@@ -257,7 +257,7 @@ def test_remediation_automated_rollback_demonstration(db_session, tokens):
     res_appr = client.post(
         f"/api/approvals/{plan_id}",
         json={"decision": "APPROVED", "comment": "Approved for rollback verification test"},
-        headers=neteng_headers,
+        headers={"Authorization": f"Bearer {tokens['admin']}"},
     )
     assert res_appr.status_code == 201
 
@@ -366,7 +366,7 @@ def test_admin_manual_rollback_trigger_restores_backup_and_creates_audit_log(db_
     res_appr = client.post(
         f"/api/approvals/{plan_id}",
         json={"decision": "APPROVED", "comment": "Approved for manual rollback verification"},
-        headers=neteng_headers,
+        headers={"Authorization": f"Bearer {tokens['admin']}"},
     )
     assert res_appr.status_code == 201
 

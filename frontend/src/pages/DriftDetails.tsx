@@ -1,3 +1,4 @@
+import { labelKey } from '../lib/labels';
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -178,10 +179,10 @@ export const DriftDetails: React.FC = () => {
   }
 
   const bundle = event.evidence_bundle;
-  const isHighRisk = event.risk_score >= 80 || event.label === 'Non-Compliant';
+  const isHighRisk = event.risk_score >= 80 || labelKey(event.label) === 'Non-Compliant';
 
   const getTaxonomyBadge = (label: string) => {
-    switch (label) {
+    switch (labelKey(label)) {
       case 'Non-Compliant':
         return 'bg-rose-100 text-rose-800 border-rose-300 font-bold';
       case 'Drift-Unauthorized-High':

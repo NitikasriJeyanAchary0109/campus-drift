@@ -337,7 +337,7 @@ export const Remediation: React.FC = () => {
 
             {/* Status Filter */}
             <div className="flex flex-wrap gap-1">
-              {['ALL', 'PENDING', 'APPROVED', 'APPLIED', 'REJECTED'].map((st) => (
+              {['ALL', 'PENDING', 'APPROVED', 'APPLIED', 'FAILED', 'ROLLED_BACK', 'ROLLBACK_FAILED', 'REJECTED'].map((st) => (
                 <button
                   key={st}
                   onClick={() => setStatusFilter(st)}
@@ -588,7 +588,7 @@ export const Remediation: React.FC = () => {
 
                   <div className="flex items-center gap-2 shrink-0">
                     {/* Manual Rollback Button (Admin Only) */}
-                    {isAdmin && (
+                    {isAdmin && (activePlan?.actions || []).some((a) => a.result !== 'ABORTED') && (
                       <button
                         type="button"
                         onClick={() => setIsRollbackModalOpen(true)}

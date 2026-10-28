@@ -37,9 +37,14 @@ def api_list_pending_approvals(
                 drift_event_id=plan.drift_event_id,
                 device_id=device.id if device else None,
                 device_hostname=device.hostname if device else None,
+                drift_label=plan.drift_event.label if plan.drift_event else None,
+                risk_score=plan.drift_event.risk_score if plan.drift_event else None,
+                violated_paths=plan.violated_paths,
                 proposed_commands=plan.proposed_commands,
                 status=plan.status,
                 created_at=plan.created_at,
+                created_by=plan.created_by,
+                created_by_username=plan.author_username,
                 approval=plan.approval,
             )
         )
