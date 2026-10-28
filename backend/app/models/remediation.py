@@ -13,12 +13,22 @@ class RemediationPlan(Base):
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     drift_event_id = Column(Uuid(as_uuid=True), ForeignKey("drift_events.id"), nullable=False)
     proposed_commands = Column(StringArrayType(), nullable=False)  # TEXT[] generated CLI, whitelisted templates only
-    status = Column(String(16), nullable=False, default="PENDING")  # PENDING / APPROVED / REJECTED / APPLIED
+    status = Column(String(16), nullable=False, default="PENDING")  # PENDING / APPROVED / REJECTED / APPLYING / APPLIED / FAILED / ROLLED_BACK / ROLLBACK_FAILED
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_by = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)  # author; enforces the four-eyes rule (NULL = legacy plan)
 
+    author = relationship("User", foreign_keys=[created_by])
     drift_event = relationship("DriftEvent", back_populates="remediation_plans")
     approval = relationship("Approval", back_populates="remediation_plan", uselist=False, cascade="all, delete-orphan")
     actions = relationship("RemediationAction", back_populates="remediation_plan", cascade="all, delete-orphan")
+
+    @property
+    def violated_paths(self) -> list:
+        return [d.key_path for d in self.drift_event.details] if self.drift_event else []
+
+    @property
+    def author_username(self) -> Optional[str]:
+        return self.author.username if self.author else None
 
     def __repr__(self) -> str:
         return f"<RemediationPlan(id={self.id}, status={self.status})>"

@@ -6,7 +6,7 @@ export const Settings: React.FC = () => {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-slate-800">System Settings</h2>
-        <p className="text-sm text-slate-500">Configure polling schedules, credentials vault pointers, and RBAC policy parameters.</p>
+        <p className="text-sm text-slate-500">Read-only view of how collection, sessions and credentials are configured on the server.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -15,12 +15,12 @@ export const Settings: React.FC = () => {
             <Clock className="h-4 w-4 text-sky-600" />
             <span>Scheduler Configuration</span>
           </h3>
-          <p className="text-xs text-slate-500">APScheduler handles scheduled pulls directly in the FastAPI process.</p>
+          <p className="text-xs text-slate-500">Scheduled collection runs as Celery Beat tasks on a Redis queue, so slow SSH sessions never block the API. The interval is set by the server variable <span className="font-mono">CELERY_POLL_INTERVAL_SECONDS</span>.</p>
           <div className="space-y-2">
             <label className="block text-xs font-medium text-slate-700">Default Device Polling Interval</label>
             <input
               type="text"
-              defaultValue="Every 15 minutes (crontab: */15 * * * *)"
+              defaultValue="Server-configured (default: every hour)"
               disabled
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-600"
             />

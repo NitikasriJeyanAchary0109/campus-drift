@@ -351,7 +351,7 @@ def test_approval_submission_and_pending_listing(remediation_test_env):
     res_appr = client.post(
         f"/api/approvals/{plan_id}",
         json={"decision": "APPROVED", "comment": "Verified compliant with ISO-27001 campus policy"},
-        headers=neteng_headers,
+        headers={"Authorization": f"Bearer {tokens['admin']}"},
     )
     assert res_appr.status_code == 201
     data = res_appr.json()

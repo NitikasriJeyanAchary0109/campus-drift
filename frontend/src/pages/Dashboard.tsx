@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { countByLabelKey } from '../lib/labels';
 import { apiClient } from '../api/client';
 import {
   Server,
@@ -109,10 +110,9 @@ export const Dashboard: React.FC = () => {
   const unreachableDevices = data.devices_by_status?.UNREACHABLE || 0;
   const decommissionedDevices = data.devices_by_status?.DECOMMISSIONED || 0;
 
+  const labelCounts = countByLabelKey(data.drift_by_label);
   const totalDrifts = Object.values(data.drift_by_label || {}).reduce((acc, count) => acc + count, 0);
-  const criticalDrifts =
-    (data.drift_by_label?.['Non-Compliant'] || 0) +
-    (data.drift_by_label?.['Drift-Unauthorized-High'] || 0);
+  const criticalDrifts = (labelCounts['Non-Compliant'] || 0) + (labelCounts['Drift-Unauthorized-High'] || 0);
 
   const getComplianceColor = (rate: number) => {
     if (rate >= 90) return 'text-emerald-600';
@@ -274,14 +274,22 @@ export const Dashboard: React.FC = () => {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {Object.entries(labelConfig).map(([label, style]) => {
-            const count = data.drift_by_label?.[label] || 0;
+            const count = labelCounts[label] || 0;
+            const display: Record<string, string> = {
+              'Non-Compliant': 'Critical (hard rule)',
+              'Drift-Unauthorized-High': 'Unauthorized: High',
+              'Drift-Unauthorized-Medium': 'Unauthorized: Medium',
+              'Drift-Authorized': 'Authorized (ticket)',
+              'Drift-Low': 'Unauthorized: Low',
+              'NO_BASELINE': 'No baseline',
+            };
             return (
               <div
                 key={label}
                 className={`p-3 rounded-lg border ${style.border} ${style.bg} flex flex-col justify-between`}
               >
-                <span className="text-[11px] font-medium text-slate-600 truncate" title={label}>
-                  {label}
+                <span className="text-[11px] font-medium text-slate-600 leading-tight" title={label}>
+                  {display[label] || label}
                 </span>
                 <span className={`text-xl font-bold ${style.text} mt-1`}>{count}</span>
               </div>

@@ -31,7 +31,7 @@ class RemediationActionOut(BaseModel):
     id: UUID
     remediation_plan_id: UUID
     executed_commands: List[str]
-    result: str  # SUCCESS / FAILED / ROLLED_BACK
+    result: str  # SUCCESS / ROLLED_BACK / ROLLBACK_FAILED / ABORTED / IN_PROGRESS
     verification_snapshot_id: Optional[UUID] = None
     executed_at: datetime
 
@@ -43,9 +43,14 @@ class RemediationPlanOut(BaseModel):
     drift_event_id: UUID
     device_id: Optional[UUID] = None
     device_hostname: Optional[str] = None
+    drift_label: Optional[str] = None  # what the plan fixes: the drift event's label, score and violated rule paths
+    risk_score: Optional[int] = None
+    violated_paths: List[str] = []
     proposed_commands: List[str]
-    status: str  # PENDING / APPROVED / REJECTED / APPLIED
+    status: str  # PENDING / APPROVED / REJECTED / APPLYING / APPLIED / FAILED / ROLLED_BACK / ROLLBACK_FAILED
     created_at: datetime
+    created_by: Optional[UUID] = None
+    created_by_username: Optional[str] = None
     approval: Optional[ApprovalOut] = None
     actions: List[RemediationActionOut] = []
 

@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Ticket,
 } from 'lucide-react';
 
 interface NavItem {
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Devices', path: '/devices', icon: Server, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Baselines', path: '/baselines', icon: FileCheck2, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
+  { name: 'Change Tickets', path: '/tickets', icon: Ticket, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Drift Events', path: '/drift', icon: GitCompare, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Remediation', path: '/remediation', icon: Wrench, roles: ['Admin', 'NetworkEngineer'] },
   { name: 'Approval Queue', path: '/approvals', icon: CheckSquare, roles: ['Admin', 'NetworkEngineer'] },

@@ -96,6 +96,7 @@ def generate_remediation_plan(db: Session, drift_event_id: UUID, user_id: UUID) 
         proposed_commands=proposed_commands,
         status="PENDING",
         created_at=datetime.now(timezone.utc),
+        created_by=user_id,
     )
     db.add(plan)
     db.flush()
@@ -146,6 +147,16 @@ def submit_approval(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot submit approval for plan in status '{plan.status}' (must be PENDING)",
+        )
+
+    # Four-eyes rule: the author of a plan may reject (withdraw) it but never approve it
+    if decision.upper() == "APPROVED" and plan.created_by is not None and plan.created_by == user.id:
+        db.add(AuditLog(user_id=user.id, action="PLAN_SELF_APPROVAL_BLOCKED", target_type="remediation", target_id=plan.id,
+                        after_state={"plan_id": str(plan.id), "user": user.username}))
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Four-eyes rule: you drafted this remediation plan, so a different engineer or administrator must approve it.",
         )
 
     # Check for existing approval

@@ -15,6 +15,7 @@ import { ApprovalQueue } from './pages/ApprovalQueue';
 import { Alerts } from './pages/Alerts';
 import { AuditLogs } from './pages/AuditLogs';
 import { Settings } from './pages/Settings';
+import { Tickets } from './pages/Tickets';
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated, isLoadingAuth, initAuth } = useAuthStore();
@@ -62,6 +63,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="devices/:id" element={<DeviceDetails />} />
         <Route path="baselines" element={<Baselines />} />
         <Route path="baselines/:id" element={<BaselineDetails />} />
+        <Route path="tickets" element={<Tickets />} />
         <Route path="drift" element={<DriftEvents />} />
         <Route path="drift/:id" element={<DriftDetails />} />
         <Route path="remediation" element={<Remediation />} />
