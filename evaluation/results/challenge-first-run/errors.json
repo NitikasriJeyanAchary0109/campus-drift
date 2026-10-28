@@ -1,0 +1,117 @@
+[
+  {
+    "device": "sw-cls-05",
+    "group": "Classroom",
+    "scenario": "c_nonascii_location",
+    "stratum": "challenge",
+    "notes": "legitimate non-ASCII text in an unmonitored line",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-cls-12",
+    "group": "Classroom",
+    "scenario": "c_access_vlan_other",
+    "stratum": "challenge",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=HIGH (score 85)"
+  },
+  {
+    "device": "sw-hst-09",
+    "group": "Hostel",
+    "scenario": "c_nonascii_location",
+    "stratum": "challenge",
+    "notes": "legitimate non-ASCII text in an unmonitored line",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-hst-11",
+    "group": "Hostel",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "FP",
+    "key_path": "access_list_ordered.STUDENT-IN",
+    "detail": "expected=[\"permit ip 10.10.30.0 0.0.0.255 host 10.10.0.53\", \"permit ip 10.10.30.0 0.0.0.255 host 10.10.0.54\", \"deny ip 10.10.30.0 0.0.0.255 10.10.0.0 0.0.255.255\", \"permit ip 10.10.30.0 0.0.0.255 any\", \"deny ip any any\"] actual=['remark student ingress filter', 'permit ip 10.10.30.0 0.0.0.255 host 10.10.0.53', 'permit ip 10.10.30.0 0.0.0.255 host 10.10.0.54', 'deny ip 10.10.30.0 0.0.0.255 10.10.0.0 0.0.255.255', 'permit ip 10.10.30.0 0.0.0.255 any', 'deny ip any any'] (MODIFIED)"
+  },
+  {
+    "device": "sw-hst-11",
+    "group": "Hostel",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-off-05",
+    "group": "Office",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "FP",
+    "key_path": "access_list_ordered.STUDENT-IN",
+    "detail": "expected=[\"permit ip 10.10.20.0 0.0.0.255 host 10.10.0.53\", \"permit ip 10.10.20.0 0.0.0.255 host 10.10.0.54\", \"deny ip 10.10.20.0 0.0.0.255 10.10.0.0 0.0.255.255\", \"permit ip 10.10.20.0 0.0.0.255 any\", \"deny ip any any\"] actual=['remark student ingress filter', 'permit ip 10.10.20.0 0.0.0.255 host 10.10.0.53', 'permit ip 10.10.20.0 0.0.0.255 host 10.10.0.54', 'deny ip 10.10.20.0 0.0.0.255 10.10.0.0 0.0.255.255', 'permit ip 10.10.20.0 0.0.0.255 any', 'deny ip any any'] (MODIFIED)"
+  },
+  {
+    "device": "sw-off-05",
+    "group": "Office",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 85)"
+  },
+  {
+    "device": "sw-off-10",
+    "group": "Office",
+    "scenario": "c_access_vlan_other",
+    "stratum": "challenge",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=HIGH (score 85)"
+  },
+  {
+    "device": "sw-lab-03",
+    "group": "Lab",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "FP",
+    "key_path": "access_list_ordered.STUDENT-IN",
+    "detail": "expected=[\"permit ip 10.10.60.0 0.0.0.255 host 10.10.0.53\", \"permit ip 10.10.60.0 0.0.0.255 host 10.10.0.54\", \"deny ip 10.10.60.0 0.0.0.255 10.10.0.0 0.0.255.255\", \"permit ip 10.10.60.0 0.0.0.255 any\", \"deny ip any any\"] actual=['remark student ingress filter', 'permit ip 10.10.60.0 0.0.0.255 host 10.10.0.53', 'permit ip 10.10.60.0 0.0.0.255 host 10.10.0.54', 'deny ip 10.10.60.0 0.0.0.255 10.10.0.0 0.0.255.255', 'permit ip 10.10.60.0 0.0.0.255 any', 'deny ip any any'] (MODIFIED)"
+  },
+  {
+    "device": "sw-lab-03",
+    "group": "Lab",
+    "scenario": "c_acl_remark",
+    "stratum": "challenge",
+    "notes": "a remark is documentation, not filtering behaviour (should be cosmetic)",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=COMPLIANT system=HIGH (score 94)"
+  },
+  {
+    "device": "sw-lab-08",
+    "group": "Lab",
+    "scenario": "c_nonascii_location",
+    "stratum": "challenge",
+    "notes": "legitimate non-ASCII text in an unmonitored line",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  },
+  {
+    "device": "sw-evt-09",
+    "group": "PublicEvent",
+    "scenario": "c_nonascii_location",
+    "stratum": "challenge",
+    "notes": "legitimate non-ASCII text in an unmonitored line",
+    "kind": "FALSE_PARSE_ERROR",
+    "detail": "valid config rejected by the parser (alert raised)",
+    "truth_tier": "COMPLIANT"
+  }
+]

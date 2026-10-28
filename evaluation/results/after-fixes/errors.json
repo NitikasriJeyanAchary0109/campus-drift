@@ -1,0 +1,47 @@
+[
+  {
+    "device": "sw-hst-03",
+    "group": "Hostel",
+    "scenario": "d_acl_overlap_swap",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-hst-04",
+    "group": "Hostel",
+    "scenario": "d_acl_entry_removed",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-hst-09",
+    "group": "Hostel",
+    "scenario": "d_trunk_leak",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=HIGH system=MEDIUM (score 68)"
+  },
+  {
+    "device": "sw-evt-03",
+    "group": "PublicEvent",
+    "scenario": "d_access_vlan_mgmt",
+    "stratum": "core",
+    "notes": "",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=LOW (score 42)"
+  },
+  {
+    "device": "sw-evt-07",
+    "group": "PublicEvent",
+    "scenario": "t_wrong_scope",
+    "stratum": "core",
+    "notes": "ticket scope (snmp) does not cover the trunk key path",
+    "kind": "TIER_MISMATCH",
+    "detail": "truth=MEDIUM system=LOW (score 42)"
+  }
+]

@@ -86,6 +86,36 @@ def canonicalize_tokens(token_str: str) -> str:
     return " ".join(sorted(tokens))
 
 
+def merge_transport_input(existing: Optional[str], new: str) -> str:
+    """
+    Combine 'transport input' values from several VTY ranges (e.g. 'line vty 0 4' and 'line vty 5 15').
+    The policy must hold on every range, so the merged value is the union of protocols; 'none'
+    (a disabled range) never masks a protocol that another range allows.
+    """
+    if existing is None:
+        return new
+    tokens = set(existing.split()) | set(new.split())
+    if len(tokens) > 1:
+        tokens.discard("none")
+    return " ".join(sorted(tokens))
+
+
+def _parse_ntp_server(arguments: str) -> str:
+    """
+    Parse the argument of 'ntp server': '<ip|name> [prefer] [key N] [source IF] ...' with an optional
+    leading 'vrf NAME'. IPv4-shaped tokens must be valid addresses; other tokens are DNS names.
+    """
+    tokens = arguments.split()
+    if tokens[:1] == ["vrf"]:
+        tokens = tokens[2:]
+    if not tokens:
+        raise ParseError("Malformed ntp server statement")
+    server = tokens[0]
+    if re.match(r"^\d+\.\d+\.\d+\.\d+$", server) or ":" in server:
+        return canonicalize_ip(server)
+    return server.lower()
+
+
 def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
     """
     Parse Cisco IOS running-config into the key-path tree structure defined in §5/§11/§12.
@@ -120,8 +150,17 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
 
     current_block: Optional[str] = None
     current_block_id: Optional[str] = None
+    banner_delim: Optional[str] = None  # set while inside a multi-line 'banner' body
 
     for line_idx, raw_line in enumerate(lines, start=1):
+        # Banner bodies are free text (unindented, arbitrary punctuation); skip until the closing delimiter
+        if banner_delim is not None:
+            if "\x00" in raw_line:
+                raise ParseError(f"Corrupted configuration stream at line {line_idx}")
+            if banner_delim in raw_line:
+                banner_delim = None
+            continue
+
         # Detect corrupted stream markers like '!%#CORRUPTED...'
         if "%#" in raw_line or "#%" in raw_line or "\x00" in raw_line:
             raise ParseError(f"Corrupted configuration stream at line {line_idx}: '{raw_line.strip()}'")
@@ -193,9 +232,9 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
             elif lower_line.startswith("ntp server "):
                 parts = stripped.split(maxsplit=2)
                 if len(parts) >= 3:
-                    server_ip = canonicalize_ip(parts[2].strip())
-                    if server_ip not in tree["ntp"]["server"]:
-                        tree["ntp"]["server"].append(server_ip)
+                    server = _parse_ntp_server(parts[2])
+                    if server not in tree["ntp"]["server"]:
+                        tree["ntp"]["server"].append(server)
 
             # 7. SNMP community
             elif lower_line.startswith("snmp-server community "):
@@ -215,6 +254,8 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                 if len(parts) >= 3:
                     acl_id = parts[1]
                     rule = parts[2].strip()
+                    if rule.lower().startswith("remark"):
+                        continue  # remarks are documentation, not filtering behaviour
                     if acl_id not in tree["access_list"]:
                         tree["access_list"][acl_id] = []
                     tree["access_list"][acl_id].append(rule)
@@ -302,6 +343,13 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                 if acl_name not in tree["access_list_ordered"]:
                     tree["access_list_ordered"][acl_name] = []
 
+            # 14. Banner: 'banner motd ^C' ... body ... '^C' (body is not parsed)
+            elif lower_line.startswith("banner "):
+                rest = stripped.split(maxsplit=2)[2] if len(stripped.split(maxsplit=2)) > 2 else ""
+                delim = "^C" if rest.startswith("^C") else rest[:1]
+                if delim and rest.count(delim) < 2:
+                    banner_delim = delim
+
             else:
                 # Allowed standard global keywords in Cisco IOS
                 allowed_prefixes = (
@@ -311,8 +359,10 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                     "ip domain name", "username ", "clock ", "privilege "
                 )
                 if not any(lower_line.startswith(p) for p in allowed_prefixes):
-                    # Check if line looks completely corrupted
-                    if not re.match(r"^[a-zA-Z0-9_\-\.\s]+$", stripped):
+                    # Unmonitored global commands are ignored; only lines that cannot be device output
+                    # (control / non-printable characters) indicate a corrupted capture. Ordinary punctuation and
+                    # non-ASCII text (e.g. 'snmp-server location Block B, Floor 2') are legitimate.
+                    if not stripped.replace("\t", " ").isprintable():
                         raise ParseError(f"Unrecognized or corrupted syntax at line {line_idx}: '{stripped}'")
 
         else:
@@ -373,9 +423,13 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                 if lower_cmd.startswith("transport input"):
                     parts = stripped.split(maxsplit=2)
                     if len(parts) >= 3:
-                        line_obj["transport_input"] = canonicalize_tokens(parts[2])
+                        value = canonicalize_tokens(parts[2])
                     elif len(parts) == 2:
-                        line_obj["transport_input"] = "none"
+                        value = "none"
+                    else:
+                        value = None
+                    if value is not None:
+                        line_obj["transport_input"] = merge_transport_input(line_obj["transport_input"], value)
                 elif lower_cmd.startswith("exec-timeout"):
                     parts = stripped.split(maxsplit=1)
                     if len(parts) >= 2:
@@ -401,11 +455,17 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                     tree["router"][proto][pid]["networks"].append(stripped)
 
             elif current_block == "ip_access_list":
+                if lower_cmd.startswith("remark"):
+                    continue  # remarks are documentation, not filtering behaviour
                 # permit / deny
                 tree["access_list"][current_block_id].append(stripped)
                 if current_block_id not in tree["access_list_ordered"]:
                     tree["access_list_ordered"][current_block_id] = []
                 tree["access_list_ordered"][current_block_id].append(stripped)
+
+    if banner_delim is not None:
+        # An unterminated banner would silently swallow the rest of the config: never skip silently
+        raise ParseError(f"Unterminated banner (closing delimiter '{banner_delim}' not found)")
 
     # Canonicalize order-independent collections
     # 1. NTP servers: sort list

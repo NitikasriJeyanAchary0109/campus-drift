@@ -26,6 +26,7 @@ from app.services.acl_analyzer import (
     analyze_acl_permutation,
 )
 from app.services.tickets import find_matching_ticket
+from app.services.evidence import locate_source_line
 from app.schemas.drift import EvidenceBundle, DriftDetailOut
 
 
@@ -454,16 +455,18 @@ def detect_drift(
 def build_evidence_bundle(db: Session, event: DriftEvent) -> EvidenceBundle:
     """
     Generate complete evidence bundle for a drift event per §12:
-    Includes expected value, actual value, affected device, section/path,
-    ticket match status, underlying severity, and why-it-matters narrative.
+    Includes expected value, actual value, affected device, section/path, the cited
+    running-config line, ticket match status, underlying severity, and why-it-matters narrative.
     """
     device = event.device
     group_name = device.device_group.name if device and device.device_group else "Unknown"
 
+    raw_config = event.snapshot.raw_config if event.snapshot else None
     details_out = []
     summaries = []
     for d in event.details:
         rule = d.rule
+        citation = locate_source_line(raw_config, d.key_path, d.expected_value)
         why_matters = (rule.description if rule and rule.description else None) or generate_why_it_matters(
             key_path=d.key_path,
             rule_type=rule.rule_type if rule else "EXACT",
@@ -479,6 +482,8 @@ def build_evidence_bundle(db: Session, event: DriftEvent) -> EvidenceBundle:
                 change_type=d.change_type,
                 rule_id=d.rule_id,
                 why_it_matters=why_matters,
+                source_line=citation[0] if citation else None,
+                source_line_number=citation[1] if citation else None,
             )
         )
         summaries.append(why_matters)

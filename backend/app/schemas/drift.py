@@ -18,6 +18,8 @@ class DriftDetailOut(BaseModel):
     change_type: str  # ADDED / REMOVED / MODIFIED
     rule_id: Optional[UUID] = None
     why_it_matters: Optional[str] = None
+    source_line: Optional[str] = None  # running-config line (or "(absent) ...") that evidences this detail
+    source_line_number: Optional[int] = None  # 1-based; None when the item is absent from the config
 
     model_config = ConfigDict(from_attributes=True)
 

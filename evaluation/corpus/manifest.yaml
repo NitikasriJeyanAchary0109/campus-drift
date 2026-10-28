@@ -1,0 +1,1514 @@
+profile: standard
+seed: 20261027
+capture_time: '2026-10-27T12:00:00Z'
+devices_per_group: 20
+device_count: 100
+devices:
+- hostname: sw-cls-00
+  group: Classroom
+  scenario: r_ntp_prefer
+  stratum: realism
+  config: configs/sw-cls-00.cfg
+  golden: golden/sw-cls-00.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-cls-01
+  group: Classroom
+  scenario: t_wrong_scope
+  stratum: core
+  config: configs/sw-cls-01.cfg
+  golden: golden/sw-cls-01.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ticket scope (snmp) does not cover the trunk key path; also covered by group ticket CHG-sw-cls-11-grp
+  split: tune
+- hostname: sw-cls-02
+  group: Classroom
+  scenario: t_hard_telnet
+  stratum: core
+  config: configs/sw-cls-02.cfg
+  golden: golden/sw-cls-02.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: 'hard-compliance rule: a valid ticket must NOT authorize it'
+  split: tune
+- hostname: sw-cls-03
+  group: Classroom
+  scenario: t_ntp_expired
+  stratum: core
+  config: configs/sw-cls-03.cfg
+  golden: golden/sw-cls-03.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: 'ticket ended 45 min before capture: outside the grace window'
+  split: test
+- hostname: sw-cls-04
+  group: Classroom
+  scenario: p_truncated
+  stratum: adversarial
+  config: configs/sw-cls-04.cfg
+  golden: golden/sw-cls-04.cfg
+  expect_parse_error: true
+  findings: []
+  event_tier: PARSE_ERROR
+  notes: ''
+  split: test
+- hostname: sw-cls-05
+  group: Classroom
+  scenario: r_snmp_public_acl
+  stratum: realism
+  config: configs/sw-cls-05.cfg
+  golden: golden/sw-cls-05.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.public.exists
+    family: snmp_community
+    mutation: snmp_public_with_acl
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-cls-06
+  group: Classroom
+  scenario: d_multi
+  stratum: core
+  config: configs/sw-cls-06.cfg
+  golden: golden/sw-cls-06.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: CRITICAL
+  notes: also covered by group ticket CHG-sw-cls-11-grp
+  split: tune
+- hostname: sw-cls-07
+  group: Classroom
+  scenario: t_multi_partial
+  stratum: core
+  config: configs/sw-cls-07.cfg
+  golden: golden/sw-cls-07.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ticket authorizes NTP only; the trunk leak is unauthorized; also covered by group ticket CHG-sw-cls-11-grp
+  split: test
+- hostname: sw-cls-08
+  group: Classroom
+  scenario: d_access_vlan_mgmt
+  stratum: core
+  config: configs/sw-cls-08.cfg
+  golden: golden/sw-cls-08.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.switchport.access_vlan
+    family: access_vlan_mgmt
+    mutation: access_vlan_to_mgmt
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: test
+- hostname: sw-cls-09
+  group: Classroom
+  scenario: clean
+  stratum: core
+  config: configs/sw-cls-09.cfg
+  golden: golden/sw-cls-09.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-cls-10
+  group: Classroom
+  scenario: clean
+  stratum: core
+  config: configs/sw-cls-10.cfg
+  golden: golden/sw-cls-10.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-cls-11
+  group: Classroom
+  scenario: t_trunk_group_ticket
+  stratum: core
+  config: configs/sw-cls-11.cfg
+  golden: golden/sw-cls-11.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: group-scoped ticket with prefix key-path scope
+  split: tune
+- hostname: sw-cls-12
+  group: Classroom
+  scenario: r_vty_split_telnet
+  stratum: realism
+  config: configs/sw-cls-12.cfg
+  golden: golden/sw-cls-12.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added_split
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only
+  split: test
+- hostname: sw-cls-13
+  group: Classroom
+  scenario: t_other_device
+  stratum: core
+  config: configs/sw-cls-13.cfg
+  golden: golden/sw-cls-13.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ticket belongs to sw-cls-14
+  split: tune
+- hostname: sw-cls-14
+  group: Classroom
+  scenario: t_ntp_grace_after
+  stratum: core
+  config: configs/sw-cls-14.cfg
+  golden: golden/sw-cls-14.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: 'ticket ended 20 min before capture: inside the 30 min grace window'
+  split: tune
+- hostname: sw-cls-15
+  group: Classroom
+  scenario: r_snmp_location
+  stratum: realism
+  config: configs/sw-cls-15.cfg
+  golden: golden/sw-cls-15.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-cls-16
+  group: Classroom
+  scenario: d_snmp_private_rw
+  stratum: core
+  config: configs/sw-cls-16.cfg
+  golden: golden/sw-cls-16.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.private.exists
+    family: snmp_community
+    mutation: snmp_private_rw
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-cls-17
+  group: Classroom
+  scenario: d_vty_telnet_added
+  stratum: core
+  config: configs/sw-cls-17.cfg
+  golden: golden/sw-cls-17.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-cls-18
+  group: Classroom
+  scenario: cos_reorder
+  stratum: core
+  config: configs/sw-cls-18.cfg
+  golden: golden/sw-cls-18.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-cls-19
+  group: Classroom
+  scenario: clean
+  stratum: core
+  config: configs/sw-cls-19.cfg
+  golden: golden/sw-cls-19.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-hst-00
+  group: Hostel
+  scenario: clean
+  stratum: core
+  config: configs/sw-hst-00.cfg
+  golden: golden/sw-hst-00.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-hst-01
+  group: Hostel
+  scenario: r_vty_split_clean
+  stratum: realism
+  config: configs/sw-hst-01.cfg
+  golden: golden/sw-hst-01.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-hst-02
+  group: Hostel
+  scenario: clean
+  stratum: core
+  config: configs/sw-hst-02.cfg
+  golden: golden/sw-hst-02.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-hst-03
+  group: Hostel
+  scenario: d_acl_overlap_swap
+  stratum: core
+  config: configs/sw-hst-03.cfg
+  golden: golden/sw-hst-03.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: access_list_ordered.STUDENT-IN
+    family: acl_order
+    mutation: acl_overlap_swap
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-hst-04
+  group: Hostel
+  scenario: d_acl_entry_removed
+  stratum: core
+  config: configs/sw-hst-04.cfg
+  golden: golden/sw-hst-04.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: access_list_ordered.STUDENT-IN
+    family: acl_removed
+    mutation: acl_entry_removed
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-hst-05
+  group: Hostel
+  scenario: r_ntp_extra_server
+  stratum: realism
+  config: configs/sw-hst-05.cfg
+  golden: golden/sw-hst-05.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_extra_rogue
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: tune
+- hostname: sw-hst-06
+  group: Hostel
+  scenario: clean
+  stratum: core
+  config: configs/sw-hst-06.cfg
+  golden: golden/sw-hst-06.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-hst-07
+  group: Hostel
+  scenario: t_ntp_starts_late
+  stratum: core
+  config: configs/sw-hst-07.cfg
+  golden: golden/sw-hst-07.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: 'ticket starts 45 min after capture: outside the grace window'
+  split: tune
+- hostname: sw-hst-08
+  group: Hostel
+  scenario: d_portsec_explicit_no
+  stratum: core
+  config: configs/sw-hst-08.cfg
+  golden: golden/sw-hst-08.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/2.port_security.enabled
+    family: portsec_off
+    mutation: portsec_explicit_no
+    drift: true
+    authorized: false
+    tier: MEDIUM
+  event_tier: MEDIUM
+  notes: ''
+  split: test
+- hostname: sw-hst-09
+  group: Hostel
+  scenario: d_trunk_leak
+  stratum: core
+  config: configs/sw-hst-09.cfg
+  golden: golden/sw-hst-09.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-hst-10
+  group: Hostel
+  scenario: r_banner
+  stratum: realism
+  config: configs/sw-hst-10.cfg
+  golden: golden/sw-hst-10.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: legitimate login banner (unindented body, ^C delimiter)
+  split: tune
+- hostname: sw-hst-11
+  group: Hostel
+  scenario: cos_whitespace
+  stratum: core
+  config: configs/sw-hst-11.cfg
+  golden: golden/sw-hst-11.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-hst-12
+  group: Hostel
+  scenario: d_vty_transport_all
+  stratum: core
+  config: configs/sw-hst-12.cfg
+  golden: golden/sw-hst-12.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_transport_all
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test
+- hostname: sw-hst-13
+  group: Hostel
+  scenario: p_corrupt_stream
+  stratum: adversarial
+  config: configs/sw-hst-13.cfg
+  golden: golden/sw-hst-13.cfg
+  expect_parse_error: true
+  findings: []
+  event_tier: PARSE_ERROR
+  notes: ''
+  split: test
+- hostname: sw-hst-14
+  group: Hostel
+  scenario: d_portsec_removed
+  stratum: core
+  config: configs/sw-hst-14.cfg
+  golden: golden/sw-hst-14.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/2.port_security.enabled
+    family: portsec_off
+    mutation: portsec_removed
+    drift: true
+    authorized: false
+    tier: MEDIUM
+  event_tier: MEDIUM
+  notes: ''
+  split: test
+- hostname: sw-hst-15
+  group: Hostel
+  scenario: t_ntp_starts_soon
+  stratum: core
+  config: configs/sw-hst-15.cfg
+  golden: golden/sw-hst-15.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: 'ticket starts 20 min after capture: inside the grace window'
+  split: test
+- hostname: sw-hst-16
+  group: Hostel
+  scenario: cos_acl_disjoint
+  stratum: core
+  config: configs/sw-hst-16.cfg
+  golden: golden/sw-hst-16.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-hst-17
+  group: Hostel
+  scenario: cos_unmonitored
+  stratum: core
+  config: configs/sw-hst-17.cfg
+  golden: golden/sw-hst-17.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-hst-18
+  group: Hostel
+  scenario: d_snmp_public
+  stratum: core
+  config: configs/sw-hst-18.cfg
+  golden: golden/sw-hst-18.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.public.exists
+    family: snmp_community
+    mutation: snmp_public
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test
+- hostname: sw-hst-19
+  group: Hostel
+  scenario: d_ntp_missing
+  stratum: core
+  config: configs/sw-hst-19.cfg
+  golden: golden/sw-hst-19.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_missing
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: tune
+- hostname: sw-off-00
+  group: Office
+  scenario: t_trunk_group_ticket
+  stratum: core
+  config: configs/sw-off-00.cfg
+  golden: golden/sw-off-00.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: group-scoped ticket with prefix key-path scope
+  split: test
+- hostname: sw-off-01
+  group: Office
+  scenario: cos_unmonitored
+  stratum: core
+  config: configs/sw-off-01.cfg
+  golden: golden/sw-off-01.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-off-02
+  group: Office
+  scenario: clean
+  stratum: core
+  config: configs/sw-off-02.cfg
+  golden: golden/sw-off-02.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-off-03
+  group: Office
+  scenario: clean
+  stratum: core
+  config: configs/sw-off-03.cfg
+  golden: golden/sw-off-03.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-off-04
+  group: Office
+  scenario: d_acl_overlap_swap
+  stratum: core
+  config: configs/sw-off-04.cfg
+  golden: golden/sw-off-04.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: access_list_ordered.STUDENT-IN
+    family: acl_order
+    mutation: acl_overlap_swap
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-off-05
+  group: Office
+  scenario: t_wrong_scope
+  stratum: core
+  config: configs/sw-off-05.cfg
+  golden: golden/sw-off-05.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ticket scope (snmp) does not cover the trunk key path; also covered by group ticket CHG-sw-off-00-grp
+  split: tune
+- hostname: sw-off-06
+  group: Office
+  scenario: d_acl_entry_removed
+  stratum: core
+  config: configs/sw-off-06.cfg
+  golden: golden/sw-off-06.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: access_list_ordered.STUDENT-IN
+    family: acl_removed
+    mutation: acl_entry_removed
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: test
+- hostname: sw-off-07
+  group: Office
+  scenario: d_multi
+  stratum: core
+  config: configs/sw-off-07.cfg
+  golden: golden/sw-off-07.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: CRITICAL
+  notes: also covered by group ticket CHG-sw-off-00-grp
+  split: test
+- hostname: sw-off-08
+  group: Office
+  scenario: cos_acl_disjoint
+  stratum: core
+  config: configs/sw-off-08.cfg
+  golden: golden/sw-off-08.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-off-09
+  group: Office
+  scenario: d_ntp_repoint
+  stratum: core
+  config: configs/sw-off-09.cfg
+  golden: golden/sw-off-09.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: tune
+- hostname: sw-off-10
+  group: Office
+  scenario: d_vty_telnet_only
+  stratum: core
+  config: configs/sw-off-10.cfg
+  golden: golden/sw-off-10.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_only
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test
+- hostname: sw-off-11
+  group: Office
+  scenario: t_portsec_prefix_scope
+  stratum: core
+  config: configs/sw-off-11.cfg
+  golden: golden/sw-off-11.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.port_security.enabled
+    family: portsec_off
+    mutation: portsec_removed
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ''
+  split: tune
+- hostname: sw-off-12
+  group: Office
+  scenario: r_snmp_public_acl
+  stratum: realism
+  config: configs/sw-off-12.cfg
+  golden: golden/sw-off-12.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.public.exists
+    family: snmp_community
+    mutation: snmp_public_with_acl
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test
+- hostname: sw-off-13
+  group: Office
+  scenario: d_vty_telnet_added
+  stratum: core
+  config: configs/sw-off-13.cfg
+  golden: golden/sw-off-13.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test
+- hostname: sw-off-14
+  group: Office
+  scenario: t_ntp_expired
+  stratum: core
+  config: configs/sw-off-14.cfg
+  golden: golden/sw-off-14.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: 'ticket ended 45 min before capture: outside the grace window'
+  split: tune
+- hostname: sw-off-15
+  group: Office
+  scenario: t_ntp_in_window
+  stratum: core
+  config: configs/sw-off-15.cfg
+  golden: golden/sw-off-15.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ''
+  split: test
+- hostname: sw-off-16
+  group: Office
+  scenario: r_vty_split_clean
+  stratum: realism
+  config: configs/sw-off-16.cfg
+  golden: golden/sw-off-16.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-off-17
+  group: Office
+  scenario: cos_reorder
+  stratum: core
+  config: configs/sw-off-17.cfg
+  golden: golden/sw-off-17.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-off-18
+  group: Office
+  scenario: clean
+  stratum: core
+  config: configs/sw-off-18.cfg
+  golden: golden/sw-off-18.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-off-19
+  group: Office
+  scenario: cos_vlan_notation
+  stratum: core
+  config: configs/sw-off-19.cfg
+  golden: golden/sw-off-19.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-lab-00
+  group: Lab
+  scenario: d_trunk_leak
+  stratum: core
+  config: configs/sw-lab-00.cfg
+  golden: golden/sw-lab-00.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: test
+- hostname: sw-lab-01
+  group: Lab
+  scenario: cos_vlan_notation
+  stratum: core
+  config: configs/sw-lab-01.cfg
+  golden: golden/sw-lab-01.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-lab-02
+  group: Lab
+  scenario: d_vty_telnet_only
+  stratum: core
+  config: configs/sw-lab-02.cfg
+  golden: golden/sw-lab-02.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_only
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-lab-03
+  group: Lab
+  scenario: t_portsec_prefix_scope
+  stratum: core
+  config: configs/sw-lab-03.cfg
+  golden: golden/sw-lab-03.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.port_security.enabled
+    family: portsec_off
+    mutation: portsec_removed
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ''
+  split: test
+- hostname: sw-lab-04
+  group: Lab
+  scenario: d_portsec_explicit_no
+  stratum: core
+  config: configs/sw-lab-04.cfg
+  golden: golden/sw-lab-04.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/2.port_security.enabled
+    family: portsec_off
+    mutation: portsec_explicit_no
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-lab-05
+  group: Lab
+  scenario: d_portsec_removed
+  stratum: core
+  config: configs/sw-lab-05.cfg
+  golden: golden/sw-lab-05.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.port_security.enabled
+    family: portsec_off
+    mutation: portsec_removed
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: tune
+- hostname: sw-lab-06
+  group: Lab
+  scenario: t_multi_partial
+  stratum: core
+  config: configs/sw-lab-06.cfg
+  golden: golden/sw-lab-06.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ticket authorizes NTP only; the trunk leak is unauthorized
+  split: tune
+- hostname: sw-lab-07
+  group: Lab
+  scenario: p_truncated
+  stratum: adversarial
+  config: configs/sw-lab-07.cfg
+  golden: golden/sw-lab-07.cfg
+  expect_parse_error: true
+  findings: []
+  event_tier: PARSE_ERROR
+  notes: ''
+  split: tune
+- hostname: sw-lab-08
+  group: Lab
+  scenario: t_other_device
+  stratum: core
+  config: configs/sw-lab-08.cfg
+  golden: golden/sw-lab-08.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ticket belongs to sw-lab-09
+  split: tune
+- hostname: sw-lab-09
+  group: Lab
+  scenario: d_acl_overlap_swap
+  stratum: core
+  config: configs/sw-lab-09.cfg
+  golden: golden/sw-lab-09.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: access_list_ordered.STUDENT-IN
+    family: acl_order
+    mutation: acl_overlap_swap
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: test
+- hostname: sw-lab-10
+  group: Lab
+  scenario: clean
+  stratum: core
+  config: configs/sw-lab-10.cfg
+  golden: golden/sw-lab-10.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-lab-11
+  group: Lab
+  scenario: r_vty_split_telnet
+  stratum: realism
+  config: configs/sw-lab-11.cfg
+  golden: golden/sw-lab-11.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added_split
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only
+  split: test
+- hostname: sw-lab-12
+  group: Lab
+  scenario: d_access_vlan_mgmt
+  stratum: core
+  config: configs/sw-lab-12.cfg
+  golden: golden/sw-lab-12.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.switchport.access_vlan
+    family: access_vlan_mgmt
+    mutation: access_vlan_to_mgmt
+    drift: true
+    authorized: false
+    tier: HIGH
+  event_tier: HIGH
+  notes: ''
+  split: test
+- hostname: sw-lab-13
+  group: Lab
+  scenario: r_ntp_extra_server
+  stratum: realism
+  config: configs/sw-lab-13.cfg
+  golden: golden/sw-lab-13.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_extra_rogue
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: test
+- hostname: sw-lab-14
+  group: Lab
+  scenario: t_hard_telnet
+  stratum: core
+  config: configs/sw-lab-14.cfg
+  golden: golden/sw-lab-14.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: 'hard-compliance rule: a valid ticket must NOT authorize it'
+  split: tune
+- hostname: sw-lab-15
+  group: Lab
+  scenario: d_vty_transport_all
+  stratum: core
+  config: configs/sw-lab-15.cfg
+  golden: golden/sw-lab-15.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_transport_all
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-lab-16
+  group: Lab
+  scenario: r_snmp_location
+  stratum: realism
+  config: configs/sw-lab-16.cfg
+  golden: golden/sw-lab-16.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-lab-17
+  group: Lab
+  scenario: clean
+  stratum: core
+  config: configs/sw-lab-17.cfg
+  golden: golden/sw-lab-17.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-lab-18
+  group: Lab
+  scenario: clean
+  stratum: core
+  config: configs/sw-lab-18.cfg
+  golden: golden/sw-lab-18.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-lab-19
+  group: Lab
+  scenario: r_ntp_prefer
+  stratum: realism
+  config: configs/sw-lab-19.cfg
+  golden: golden/sw-lab-19.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-evt-00
+  group: PublicEvent
+  scenario: clean
+  stratum: core
+  config: configs/sw-evt-00.cfg
+  golden: golden/sw-evt-00.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-evt-01
+  group: PublicEvent
+  scenario: clean
+  stratum: core
+  config: configs/sw-evt-01.cfg
+  golden: golden/sw-evt-01.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-evt-02
+  group: PublicEvent
+  scenario: t_other_device
+  stratum: core
+  config: configs/sw-evt-02.cfg
+  golden: golden/sw-evt-02.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ticket belongs to sw-evt-03
+  split: test
+- hostname: sw-evt-03
+  group: PublicEvent
+  scenario: d_access_vlan_mgmt
+  stratum: core
+  config: configs/sw-evt-03.cfg
+  golden: golden/sw-evt-03.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.FastEthernet0/1.switchport.access_vlan
+    family: access_vlan_mgmt
+    mutation: access_vlan_to_mgmt
+    drift: true
+    authorized: false
+    tier: MEDIUM
+  event_tier: MEDIUM
+  notes: ''
+  split: tune
+- hostname: sw-evt-04
+  group: PublicEvent
+  scenario: p_corrupt_stream
+  stratum: adversarial
+  config: configs/sw-evt-04.cfg
+  golden: golden/sw-evt-04.cfg
+  expect_parse_error: true
+  findings: []
+  event_tier: PARSE_ERROR
+  notes: ''
+  split: tune
+- hostname: sw-evt-05
+  group: PublicEvent
+  scenario: d_ntp_missing
+  stratum: core
+  config: configs/sw-evt-05.cfg
+  golden: golden/sw-evt-05.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_missing
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: test
+- hostname: sw-evt-06
+  group: PublicEvent
+  scenario: cos_whitespace
+  stratum: core
+  config: configs/sw-evt-06.cfg
+  golden: golden/sw-evt-06.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-evt-07
+  group: PublicEvent
+  scenario: t_wrong_scope
+  stratum: core
+  config: configs/sw-evt-07.cfg
+  golden: golden/sw-evt-07.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: interface.GigabitEthernet0/1.switchport.trunk_allowed_vlans
+    family: trunk_leak
+    mutation: trunk_leak
+    drift: true
+    authorized: false
+    tier: MEDIUM
+  event_tier: MEDIUM
+  notes: ticket scope (snmp) does not cover the trunk key path
+  split: test
+- hostname: sw-evt-08
+  group: PublicEvent
+  scenario: t_ntp_starts_soon
+  stratum: core
+  config: configs/sw-evt-08.cfg
+  golden: golden/sw-evt-08.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: 'ticket starts 20 min after capture: inside the grace window'
+  split: tune
+- hostname: sw-evt-09
+  group: PublicEvent
+  scenario: d_ntp_repoint
+  stratum: core
+  config: configs/sw-evt-09.cfg
+  golden: golden/sw-evt-09.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: ''
+  split: test
+- hostname: sw-evt-10
+  group: PublicEvent
+  scenario: r_banner
+  stratum: realism
+  config: configs/sw-evt-10.cfg
+  golden: golden/sw-evt-10.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: legitimate login banner (unindented body, ^C delimiter)
+  split: test
+- hostname: sw-evt-11
+  group: PublicEvent
+  scenario: clean
+  stratum: core
+  config: configs/sw-evt-11.cfg
+  golden: golden/sw-evt-11.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: tune
+- hostname: sw-evt-12
+  group: PublicEvent
+  scenario: r_vty_split_telnet
+  stratum: realism
+  config: configs/sw-evt-12.cfg
+  golden: golden/sw-evt-12.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added_split
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: telnet only on 'line vty 0 4'; 'line vty 5 15' is SSH-only
+  split: tune
+- hostname: sw-evt-13
+  group: PublicEvent
+  scenario: r_ntp_prefer
+  stratum: realism
+  config: configs/sw-evt-13.cfg
+  golden: golden/sw-evt-13.cfg
+  expect_parse_error: false
+  findings: []
+  event_tier: COMPLIANT
+  notes: ''
+  split: test
+- hostname: sw-evt-14
+  group: PublicEvent
+  scenario: d_snmp_public
+  stratum: core
+  config: configs/sw-evt-14.cfg
+  golden: golden/sw-evt-14.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.public.exists
+    family: snmp_community
+    mutation: snmp_public
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: tune
+- hostname: sw-evt-15
+  group: PublicEvent
+  scenario: t_ntp_in_window
+  stratum: core
+  config: configs/sw-evt-15.cfg
+  golden: golden/sw-evt-15.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: ''
+  split: tune
+- hostname: sw-evt-16
+  group: PublicEvent
+  scenario: t_ntp_starts_late
+  stratum: core
+  config: configs/sw-evt-16.cfg
+  golden: golden/sw-evt-16.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: false
+    tier: LOW
+  event_tier: LOW
+  notes: 'ticket starts 45 min after capture: outside the grace window'
+  split: test
+- hostname: sw-evt-17
+  group: PublicEvent
+  scenario: t_hard_telnet
+  stratum: core
+  config: configs/sw-evt-17.cfg
+  golden: golden/sw-evt-17.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: line.vty.transport_input
+    family: vty_telnet
+    mutation: vty_telnet_added
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: 'hard-compliance rule: a valid ticket must NOT authorize it'
+  split: test
+- hostname: sw-evt-18
+  group: PublicEvent
+  scenario: t_ntp_grace_after
+  stratum: core
+  config: configs/sw-evt-18.cfg
+  golden: golden/sw-evt-18.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: ntp.server
+    family: ntp
+    mutation: ntp_repoint
+    drift: true
+    authorized: true
+    tier: AUTHORIZED
+  event_tier: AUTHORIZED
+  notes: 'ticket ended 20 min before capture: inside the 30 min grace window'
+  split: test
+- hostname: sw-evt-19
+  group: PublicEvent
+  scenario: d_snmp_private_rw
+  stratum: core
+  config: configs/sw-evt-19.cfg
+  golden: golden/sw-evt-19.cfg
+  expect_parse_error: false
+  findings:
+  - key_path: snmp.community.private.exists
+    family: snmp_community
+    mutation: snmp_private_rw
+    drift: true
+    authorized: false
+    tier: CRITICAL
+  event_tier: CRITICAL
+  notes: ''
+  split: test

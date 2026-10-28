@@ -179,6 +179,16 @@ def resolve_key_path(tree: Dict[str, Any], key_path: str) -> Any:
     return curr
 
 
+def _wildcard_applies(prefix_path: List[str], suffix_path: List[str], node: Any) -> bool:
+    """
+    Whether a wildcard expansion is meaningful for this node. Port-security rules describe edge (access)
+    ports; evaluating them on trunk uplinks or SVIs (Vlan99) would raise a false violation on every device.
+    """
+    if prefix_path == ["interface"] and suffix_path[:1] == ["port_security"]:
+        return isinstance(node, dict) and node.get("switchport", {}).get("mode") == "access"
+    return True
+
+
 def resolve_wildcard_key_paths(tree: Dict[str, Any], key_path_pattern: str) -> List[Tuple[str, Any]]:
     """
     Resolve wildcard key paths (e.g. 'interface.*.port_security.enabled')
@@ -209,6 +219,8 @@ def resolve_wildcard_key_paths(tree: Dict[str, Any], key_path_pattern: str) -> L
     suffix_str = ".".join(suffix_path)
 
     for item_key in curr.keys():
+        if not _wildcard_applies(prefix_path, suffix_path, curr[item_key]):
+            continue
         if suffix_str:
             concrete_path = f"{prefix_str}.{item_key}.{suffix_str}" if prefix_str else f"{item_key}.{suffix_str}"
         else:
