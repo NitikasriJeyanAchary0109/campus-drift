@@ -42,7 +42,15 @@ from app.services.vault import get_device_credential
 def generate_remediation_plan(db: Session, drift_event_id: UUID, user_id: UUID) -> RemediationPlan:
     """
     Generate a proposed remediation plan from a drift event using ONLY whitelisted Jinja2 templates.
-    Never accepts or executes free-text user CLI (§13).
+    
+    Security Invariants & Error Boundaries (§13):
+    1. Zero User-Supplied CLI: Engineers cannot type or modify CLI strings arbitrarily.
+    2. Strict Template Isolation: Commands are synthesized solely via predefined templates
+       matching the device vendor (e.g. Cisco IOS, FRR) and concrete drift key paths.
+    3. Shell Metacharacter Protection: All interpolated parameter variables are strictly validated
+       against regex `[;&|$\\`\\"]`. Violations raise SecurityViolationError -> HTTP 422.
+    4. Gating State Machine: The generated plan is placed into PENDING state, awaiting dual-control
+       review. It can never be applied until explicitly approved by an independent engineer/admin.
     """
     event = db.query(DriftEvent).filter(DriftEvent.id == drift_event_id).first()
     if not event:
@@ -61,7 +69,7 @@ def generate_remediation_plan(db: Session, drift_event_id: UUID, user_id: UUID) 
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Device associated with drift event not found",
+            detail="Device associated with drift event not found",
         )
 
     proposed_commands: List[str] = []

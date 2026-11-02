@@ -102,8 +102,12 @@ async def itsm_webhook(
 ):
     """
     Inbound webhook receiver for external ITSM platforms (ServiceNow, Jira Service Management).
-    Authenticates requests using HMAC-SHA256 signature verification over raw request body.
-    Supports idempotent creation and update of change tickets.
+    
+    Security & Reliability Invariants:
+    1. Authenticates all requests using HMAC-SHA256 signature verification over the raw body bytes.
+    2. Uses constant-time comparison (hmac.compare_digest) to eliminate timing side-channel attacks.
+    3. Operates before JSON deserialization so malformed payloads cannot trigger side effects.
+    4. Supports idempotent ticket ingestion: updating active windows or status for existing external_ref.
     """
     raw_body = await request.body()
 

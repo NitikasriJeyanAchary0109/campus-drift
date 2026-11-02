@@ -1,22 +1,20 @@
-import uuid
 import pytest
-from fastapi import FastAPI, Depends
+from app.core.database import Base, get_db
+from app.core.rbac import (
+    ROLE_ADMIN,
+    ROLE_NETWORK_ENGINEER,
+    ROLE_VIEWER,
+    require_admin,
+    require_neteng,
+    require_viewer,
+)
+from app.core.security import create_access_token, get_password_hash
+from app.models.users import Role, User
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import get_password_hash, create_access_token
-from app.core.rbac import (
-    require_admin,
-    require_neteng,
-    require_viewer,
-    ROLE_ADMIN,
-    ROLE_NETWORK_ENGINEER,
-    ROLE_VIEWER,
-)
-from app.models.users import Role, User
 
 
 # Setup in-memory SQLite for testing RBAC dependency isolation

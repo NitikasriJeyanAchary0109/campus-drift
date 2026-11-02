@@ -1,13 +1,12 @@
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import get_password_hash
+from app.main import app
+from app.models.users import Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import get_password_hash
-from app.models.users import Role, User
-from app.main import app
 
 
 @pytest.fixture(scope="module")

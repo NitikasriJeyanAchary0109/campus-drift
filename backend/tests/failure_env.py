@@ -2,10 +2,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 import app.models  # noqa: F401  (register tables)
 from app.core.database import Base
 from app.models.baselines import Baseline, BaselineRule
@@ -13,6 +9,9 @@ from app.models.devices import Device, DeviceGroup
 from app.models.drift import DriftEvent
 from app.models.users import Role, User
 from app.services.collection import ingest_raw_configuration
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 DRIFTED_CFG = """hostname sw-h1
 ntp server 10.10.0.1

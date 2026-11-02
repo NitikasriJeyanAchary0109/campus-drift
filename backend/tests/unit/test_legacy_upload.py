@@ -9,12 +9,6 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
 from app.core.database import Base, get_db
 from app.core.security import create_access_token
 from app.main import app
@@ -30,6 +24,11 @@ from app.models.users import Role, User
 from app.services import legacy
 from app.services.legacy import assert_remediation_allowed
 from app.services.remediation import apply_remediation_plan, generate_remediation_plan, submit_approval
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 HOSTNAME = "sw-legacy-01"
 

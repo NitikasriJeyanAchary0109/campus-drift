@@ -6,16 +6,16 @@ the documented 501 Not Implemented and NotImplementedError behaviors per Section
 and docs/architecture.md §21.
 """
 import uuid
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
+import pytest
+from app.core.security import create_access_token
 from app.main import app
 from app.models.devices import Device, DeviceGroup
 from app.models.users import Role, User
-from app.services.normalization import normalize_config
 from app.services.collection import collect_device_configuration
-from app.core.security import create_access_token
+from app.services.normalization import normalize_config
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def test_openconfig_normalization_raises_not_implemented():

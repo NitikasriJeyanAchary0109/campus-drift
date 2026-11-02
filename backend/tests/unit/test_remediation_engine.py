@@ -6,41 +6,36 @@ per-field input sanitization, command injection prevention, approval gate enforc
 and audit logging per §6, §8, §9, and §13 of architecture.md.
 """
 from datetime import datetime, timezone
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.audit import AuditLog
+from app.models.baselines import Baseline, BaselineRule
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
+from app.models.drift import DriftDetail, DriftEvent
+from app.models.users import Role, User
+from app.services.remediation import (
+    apply_remediation_plan,
+    generate_remediation_plan,
+)
+from app.services.remediation_templates import (
+    SecurityViolationError,
+    TemplateNotFoundError,
+    render_remediation_commands,
+    validate_community_name,
+    validate_interface_name,
+    validate_ip_address,
+    validate_transport_protocol,
+    validate_vlan_id,
+)
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import create_access_token
-from app.models.users import Role, User
-from app.models.devices import DeviceGroup, Device
-from app.models.baselines import Baseline, BaselineRule
-from app.models.configurations import ConfigurationSnapshot
-from app.models.drift import DriftEvent, DriftDetail
-from app.models.remediation import RemediationPlan, Approval, RemediationAction
-from app.models.audit import AuditLog
-from app.services.remediation_templates import (
-    render_remediation_commands,
-    validate_ip_address,
-    validate_interface_name,
-    validate_community_name,
-    validate_transport_protocol,
-    validate_vlan_id,
-    SecurityViolationError,
-    TemplateNotFoundError,
-)
-from app.services.remediation import (
-    generate_remediation_plan,
-    get_remediation_plan,
-    submit_approval,
-    list_pending_approvals,
-    apply_remediation_plan,
-)
-from app.main import app
-
 
 # -----------------------------------------------------------------------------
 # 1. Template Rendering & Multi-Vendor Tests

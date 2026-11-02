@@ -5,18 +5,18 @@ Tests alert querying, multi-field filtering, acknowledgement by NetEng+,
 RBAC enforcement (Viewer blocked from ack), and audit trail creation per §9 and §14.
 """
 from datetime import datetime, timezone
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.alerts import Alert
+from app.models.audit import AuditLog
+from app.models.users import Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import create_access_token
-from app.models.users import Role, User
-from app.models.alerts import Alert
-from app.models.audit import AuditLog
-from app.main import app
 
 
 @pytest.fixture

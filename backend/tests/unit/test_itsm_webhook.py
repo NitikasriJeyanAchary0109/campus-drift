@@ -9,18 +9,18 @@ import hmac
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
+import pytest
 from app.core.config import settings
-from app.models.devices import Device, DeviceGroup
-from app.models.configurations import ConfigurationSnapshot
+from app.main import app
 from app.models.baselines import Baseline, BaselineRule
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
 from app.models.tickets import ChangeTicket
 from app.models.users import Role, User
 from app.services.drift import detect_drift
-from app.main import app
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 def _compute_hmac(secret: str, body: bytes) -> str:

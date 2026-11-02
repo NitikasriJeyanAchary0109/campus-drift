@@ -5,24 +5,24 @@ Tests unified dashboard summary metrics, taxonomy breakdown, recent alerts/remed
 14-day trendline, and CRITICAL compliance calculation with NO_BASELINE denominator exclusion
 per §9 and §14 of architecture.md.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.alerts import Alert
+from app.models.baselines import Baseline
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
+from app.models.drift import DriftEvent
+from app.models.remediation import RemediationAction, RemediationPlan
+from app.models.users import Role, User
+from app.services.dashboard import calculate_compliance_percentage, get_dashboard_summary
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import create_access_token
-from app.models.users import Role, User
-from app.models.devices import DeviceGroup, Device
-from app.models.baselines import Baseline
-from app.models.configurations import ConfigurationSnapshot
-from app.models.drift import DriftEvent
-from app.models.alerts import Alert
-from app.models.remediation import RemediationPlan, RemediationAction
-from app.services.dashboard import calculate_compliance_percentage, get_dashboard_summary
-from app.main import app
 
 
 def test_calculate_compliance_percentage_unit():
@@ -352,7 +352,7 @@ def test_dashboard_devices_by_status_and_drift_trend_exact_math():
 
     # Assert exact drift_trend bucket math
     trend_map = {p.date: p for p in summary.drift_trend}
-    
+
     # Today's bucket: (90 + 80) / 2 = 85.0, count = 2
     today_point = trend_map[today.isoformat()]
     assert today_point.event_count == 2

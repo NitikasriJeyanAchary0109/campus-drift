@@ -13,29 +13,22 @@ Includes:
    Verification failure triggers automated rollback, reverts device running-config
    to pre-change backup, confirms rollback verification, raises CRITICAL alert, and logs audit.
 """
-from datetime import datetime, timezone
 import pytest
-from fastapi.testclient import TestClient
-from netmiko import ConnectHandler
-
 from app.core.database import SessionLocal
 from app.core.security import create_access_token
-from app.models.users import User
-from app.models.devices import Device
-from app.models.baselines import Baseline
-from app.models.drift import DriftEvent, DriftDetail
-from app.models.configurations import ConfigurationSnapshot
-from app.models.remediation import RemediationPlan, Approval, RemediationAction, Backup
+from app.main import app
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device
+from app.models.drift import DriftEvent
+from app.models.remediation import Backup, RemediationAction
+from app.models.users import User
 from app.services.collection import collect_device_configuration
 from app.services.remediation import (
-    generate_remediation_plan,
-    submit_approval,
-    apply_remediation_plan,
     _connect_to_device,
 )
-from app.main import app
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="module")

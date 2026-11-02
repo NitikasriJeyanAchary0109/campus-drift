@@ -4,17 +4,16 @@ Unit Tests for Change Ticket Matching Engine
 Tests temporal grace windows, device/group scoping, wildcard matching,
 and overlapping ticket specificity resolution per §11 of architecture.md.
 """
-import uuid
 from datetime import datetime, timedelta, timezone
+
 import pytest
+from app.core.database import Base
+from app.models.devices import Device, DeviceGroup
+from app.models.tickets import ChangeTicket
+from app.services.tickets import find_matching_ticket
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base
-from app.models.devices import DeviceGroup, Device
-from app.models.tickets import ChangeTicket
-from app.services.tickets import find_matching_ticket
 
 
 @pytest.fixture

@@ -11,11 +11,8 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-
 from app.core.config import settings
-from app.core.database import SessionLocal, engine
+from app.core.database import SessionLocal
 from app.main import app
 from app.models.configurations import ConfigurationSnapshot
 from app.models.devices import Device
@@ -23,6 +20,8 @@ from app.models.tickets import ChangeTicket
 from app.services import collection
 from app.services.collection import DeviceBusyError, collect_device_configuration
 from app.services.locks import device_lock
+from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 CLEAN = "hostname sw-classroom-01\nntp server 10.10.0.1\nline vty 0 4\n transport input ssh\nend\n"
 

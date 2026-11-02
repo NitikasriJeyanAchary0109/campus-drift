@@ -11,23 +11,22 @@ Tests the full end-to-end flow:
 7. Marking false positive with mandatory comment and audit logging.
 """
 from datetime import datetime, timedelta, timezone
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
+import pytest
 from app.core.database import SessionLocal
 from app.core.security import create_access_token
-from app.models.users import User, Role
-from app.models.devices import Device, DeviceGroup
-from app.models.baselines import Baseline, BaselineRule
-from app.models.configurations import ConfigurationSnapshot
-from app.models.tickets import ChangeTicket
-from app.models.drift import DriftEvent, DriftDetail
+from app.main import app
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
+from app.models.baselines import Baseline
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device
+from app.models.drift import DriftDetail, DriftEvent
+from app.models.tickets import ChangeTicket
+from app.models.users import User
 from app.services.collection import collect_device_configuration
-from app.services.drift import detect_drift, build_evidence_bundle
-from app.main import app
+from app.services.drift import detect_drift
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="module")

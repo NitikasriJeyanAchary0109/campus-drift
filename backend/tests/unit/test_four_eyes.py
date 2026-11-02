@@ -4,15 +4,15 @@ Four-eyes rule (dual control): the author of a remediation plan may not approve 
 Previously any NetworkEngineer could generate *and* approve their own plan; the rule existed only in the README.
 """
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
-
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.main import app
 from app.models.audit import AuditLog
 from app.models.users import Role, User
 from app.services import remediation as rem
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
 from tests.failure_env import build_env, open_event
 
 

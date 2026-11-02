@@ -54,6 +54,16 @@ postgres_data/
 .DS_Store
 Thumbs.db
 
+# Agent and editor workspaces
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.impeccable/
+.opencode/
+
 # Validation sessions (facilitator-only / runtime)
 evaluation/validation/session_key.json
 .validation_pids

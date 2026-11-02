@@ -9,20 +9,18 @@ Exercises and proves the 5 core security and approval boundaries across all 3 se
 5. Applying an unapproved plan via POST /api/remediation/{plan_id}/apply -> HTTP 409 Conflict
 """
 import uuid
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+import pytest
 from app.core.rbac import ROLE_ADMIN, ROLE_NETWORK_ENGINEER, ROLE_VIEWER
 from app.core.security import create_access_token, get_password_hash
 from app.main import app
 from app.models.alerts import Alert
-from app.models.baselines import Baseline
 from app.models.devices import Device, DeviceGroup
-from app.models.drift import DriftEvent, DriftDetail
-from app.models.remediation import RemediationPlan, Approval
+from app.models.drift import DriftEvent
+from app.models.remediation import RemediationPlan
 from app.models.users import Role, User
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture(scope="module")

@@ -4,19 +4,17 @@ Unit Tests for Baseline Management API & Service
 Tests Baseline CRUD, auto-incrementing versioning per (group, vendor),
 activation exclusivity, hybrid YAML ingestion, and RBAC enforcement per §8, §9, §12.
 """
-import uuid
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token, get_password_hash
+from app.main import app
+from app.models.baselines import Baseline
+from app.models.devices import DeviceGroup
+from app.models.users import Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import get_password_hash, create_access_token
-from app.models.users import Role, User
-from app.models.devices import DeviceGroup
-from app.models.baselines import Baseline, BaselineRule
-from app.main import app
 
 
 @pytest.fixture(scope="module")

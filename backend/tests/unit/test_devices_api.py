@@ -1,16 +1,16 @@
 import uuid
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token, get_password_hash
+from app.main import app
+from app.models.devices import Device, DeviceCredential, DeviceGroup
+from app.models.users import Role, User
+from app.services.vault import decrypt_bytes, get_device_credential
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import get_password_hash, create_access_token
-from app.models.users import Role, User
-from app.models.devices import DeviceGroup, Device, DeviceCredential
-from app.services.vault import store_device_credential, get_device_credential, decrypt_bytes
-from app.main import app
 
 
 @pytest.fixture(scope="module")
@@ -202,13 +202,18 @@ def test_poll_device_rbac(device_test_env, monkeypatch):
     res_viewer = client.post(f"/api/devices/{device_id}/poll", headers=viewer_headers)
     assert res_viewer.status_code == 403
 
-    # Mock collection service for isolated unit test
+    # Mock collection service and Celery task dispatch for isolated unit test
     class MockSnapshot:
         id = uuid.uuid4()
         status = "SUCCESS"
         collected_at = datetime.now(timezone.utc)
 
+    class MockTask:
+        id = "mock-task-poll-uuid"
+        result = {"status": "SUCCESS", "snapshot_id": str(uuid.uuid4())}
+
     monkeypatch.setattr("app.tasks.collection.collect_device_configuration", lambda **kwargs: MockSnapshot())
+    monkeypatch.setattr("app.api.devices.poll_device_task.delay", lambda *args, **kwargs: MockTask())
 
     # NetEng poll -> 202 Accepted
     neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}

@@ -5,7 +5,6 @@ Each test documents the construct that previously produced a false PARSE_ERROR o
 See evaluation/results/before-fixes vs after-fixes and docs/evaluation-error-analysis.md.
 """
 import pytest
-
 from app.services.evidence import locate_source_line
 from app.services.normalization import normalize_config, resolve_wildcard_key_paths
 from app.services.parsers.cisco_ios import ParseError, merge_transport_input

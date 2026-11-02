@@ -2,11 +2,8 @@
 Failure / edge-case suite: device collection, credentials, alerts, locks, baseline switches (WP6).
 """
 import contextlib
-from datetime import datetime, timedelta, timezone
 
 import pytest
-from netmiko.exceptions import NetmikoAuthenticationException, NetmikoTimeoutException
-
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
 from app.models.baselines import Baseline, BaselineRule
@@ -17,6 +14,8 @@ from app.services.baseline import activate_baseline
 from app.services.collection import DeviceBusyError, collect_device_configuration
 from app.services.vault import store_device_credential
 from app.tasks import collection as tasks
+from netmiko.exceptions import NetmikoAuthenticationException, NetmikoTimeoutException
+
 from tests.failure_env import CLEAN_CFG, DRIFTED_CFG, build_env, open_event
 
 

@@ -7,15 +7,15 @@ import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.main import app
 from app.models.tickets import ChangeTicket
 from app.services.tickets import find_matching_ticket
-from tests.failure_env import CLEAN_CFG, DRIFTED_CFG, build_env, open_event
+from fastapi.testclient import TestClient
+
+from tests.failure_env import CLEAN_CFG, DRIFTED_CFG, build_env
 
 NTP_DRIFT = DRIFTED_CFG.replace("snmp-server community public RO\n", "").replace("transport input telnet ssh", "transport input ssh").replace("ntp server 10.10.0.1", "ntp server 8.8.8.8")
 CAPTURE = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
@@ -41,8 +41,8 @@ def env():
 
 
 def label_for(env, captured_at, config=NTP_DRIFT):
-    from app.services.collection import ingest_raw_configuration
     from app.models.drift import DriftEvent
+    from app.services.collection import ingest_raw_configuration
     ingest_raw_configuration(env["db"], env["device"], config, "CORPUS", collected_at=captured_at)
     return env["db"].query(DriftEvent).order_by(DriftEvent.detected_at.desc()).first().label
 
@@ -205,8 +205,8 @@ def test_very_long_single_line_is_handled_without_error(env):
 
 
 def test_task_queue_down_is_a_503_not_a_500(env, monkeypatch):
-    from kombu.exceptions import OperationalError
     from app.api import devices as devices_api
+    from kombu.exceptions import OperationalError
     env["device"].collection_mode = "SSH_POLL"
     env["db"].commit()
     monkeypatch.setattr(devices_api.poll_device_task, "delay", lambda *a, **k: (_ for _ in ()).throw(OperationalError("redis down")))

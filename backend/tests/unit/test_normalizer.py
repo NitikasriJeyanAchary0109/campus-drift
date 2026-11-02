@@ -5,18 +5,19 @@ Verifies canonicalization rules, order-independence, syntax variants,
 and strict ParseError generation on malformed configs per §11 of architecture.md.
 """
 import os
+
 import pytest
 from app.services.normalization import (
+    ParseError,
     normalize_config,
-    values_equal,
     resolve_key_path,
     resolve_wildcard_key_paths,
-    ParseError,
+    values_equal,
 )
 from app.services.parsers.cisco_ios import (
     canonicalize_ip,
-    canonicalize_vlan_list,
     canonicalize_tokens,
+    canonicalize_vlan_list,
 )
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")

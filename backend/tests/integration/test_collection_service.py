@@ -6,18 +6,18 @@ verifies snapshot persistence in PostgreSQL with raw_config and normalized_json,
 tests API /api/devices/{id}/poll endpoint, and tests failure handling.
 """
 import pytest
-from fastapi.testclient import TestClient
 from app.core.database import SessionLocal
 from app.core.security import create_access_token
-from app.models.devices import Device, DeviceGroup
-from app.models.configurations import ConfigurationSnapshot
+from app.main import app
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
 from app.models.drift import DriftEvent
 from app.models.users import User
 from app.services.collection import collect_device_configuration
 from app.services.vault import store_device_credential
-from app.main import app
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="module")

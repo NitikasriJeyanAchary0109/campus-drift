@@ -7,7 +7,7 @@ commands the whitelisted remediation templates can generate, and can be told to 
 campus devices do: refuse connections, drop the session mid-push, ignore changes, fail or half-complete a rollback,
 or return garbage.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 
 class DeviceFault(Exception):

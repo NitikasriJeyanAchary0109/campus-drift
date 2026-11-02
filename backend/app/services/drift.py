@@ -94,20 +94,40 @@ def generate_why_it_matters(key_path: str, rule_type: str, expected_val: Any, ac
 
 
 def score_diff(severity_weight: int, criticality_weight: float) -> int:
-    """Calculate raw risk score: severity_weight * criticality_weight, clamped to 1-100."""
+    """
+    Calculate raw risk score via zone-weighted multiplication:
+        raw_score = severity_weight * criticality_weight
+    Clamped strictly to the integer domain [1, 100].
+    
+    Weights by campus zone:
+    - Research Laboratories: 1.2x (high sensitivity, intellectual property & testbeds)
+    - Lecture Halls / Classrooms: 1.0x (standard operational baseline)
+    - Student Hostels: 0.8x (higher tolerance for transient devices)
+    - Public / Event Spaces: 0.5x (frequently reconfigured guest access networks)
+    """
     raw = severity_weight * criticality_weight
     return min(100, max(1, int(round(raw))))
 
 
 def classify_diff(raw_score: int, hard_compliance: bool, ticket: Optional[ChangeTicket]) -> Tuple[str, int]:
     """
-    Classify a diff into taxonomy label and mapped score band per §12:
-    - hard_compliance -> Non-Compliant (Critical), score band 95-100 (never suppressed by ticket)
-    - ticket matched  -> Drift-Authorized, score band 1-30
-    - unmatched:
-        raw_score <= 50 -> Drift-Unauthorized-Low (31-50)
-        raw_score <= 79 -> Drift-Unauthorized-Medium (51-79)
-        raw_score >= 80 -> Drift-Unauthorized-High (80-94)
+    Classify a configuration diff into the standardized 6-band taxonomy (§12):
+    
+    1. Hard Compliance Violation:
+       - Trigger: rule.hard_compliance == True
+       - Label: 'Non-Compliant (Critical)'
+       - Score Range: [95, 100]
+       - Invariant: Never suppressed by change tickets; requires immediate remediation.
+       
+    2. Authorized Planned Maintenance:
+       - Trigger: ticket matched within valid temporal window (+/- 30 min grace period)
+       - Label: 'Drift-Authorized'
+       - Score Range: [1, 30] (attenuated to 30% of raw score, capped at 30)
+       
+    3. Unauthorized Deviation (Ungated Drift):
+       - raw_score in [1, 50]  -> 'Drift-Unauthorized-Low' (score mapped to [31, 50])
+       - raw_score in [51, 79] -> 'Drift-Unauthorized-Medium' (score mapped to [51, 79])
+       - raw_score in [80, 94] -> 'Drift-Unauthorized-High' (score mapped to [80, 94])
     """
     if hard_compliance:
         return "Non-Compliant (Critical)", max(95, raw_score)

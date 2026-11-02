@@ -1,14 +1,12 @@
 import uuid
-import pytest
-from fastapi.testclient import TestClient
 
+import pytest
 from app.main import app
-from app.core.database import SessionLocal
+from app.models.configurations import ConfigurationSnapshot
 from app.models.devices import Device
 from app.models.drift import DriftEvent
-from app.models.configurations import ConfigurationSnapshot
-from app.tasks.collection import poll_device_task, poll_all_devices_task
-from app.core.celery_app import celery_app
+from app.tasks.collection import poll_all_devices_task
+from fastapi.testclient import TestClient
 
 
 def test_async_device_poll_and_status_endpoint(db_session, neteng_token, viewer_token):

@@ -6,27 +6,25 @@ false-positive elimination on dirty fixtures, false-negative prevention, evidenc
 and false-positive marking per §11 and §12 of architecture.md.
 """
 import os
-import uuid
 from datetime import datetime, timedelta, timezone
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.alerts import Alert
+from app.models.audit import AuditLog
+from app.models.baselines import Baseline, BaselineRule
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
+from app.models.tickets import ChangeTicket
+from app.models.users import Role, User
+from app.services.drift import build_evidence_bundle, detect_drift
+from app.services.normalization import normalize_config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import get_password_hash, create_access_token
-from app.models.users import Role, User
-from app.models.devices import DeviceGroup, Device
-from app.models.baselines import Baseline, BaselineRule
-from app.models.configurations import ConfigurationSnapshot
-from app.models.tickets import ChangeTicket
-from app.models.drift import DriftEvent, DriftDetail
-from app.models.alerts import Alert
-from app.models.audit import AuditLog
-from app.services.normalization import normalize_config
-from app.services.drift import detect_drift, build_evidence_bundle
-from app.main import app
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 

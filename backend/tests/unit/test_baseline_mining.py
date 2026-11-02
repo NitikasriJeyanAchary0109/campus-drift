@@ -3,14 +3,13 @@ Unit tests for baseline proposal mining (WP2: bootstrap a first baseline from a 
 """
 import pytest
 import yaml
-
 from app.schemas.baselines import BaselineCreate
 from app.services.baseline import parse_yaml_baseline
 from app.services.baseline_mining import (
     flatten_tree,
+    proposal_to_yaml,
     propose_baseline,
     propose_baseline_from_configs,
-    proposal_to_yaml,
 )
 
 

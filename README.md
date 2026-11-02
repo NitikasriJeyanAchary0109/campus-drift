@@ -20,6 +20,9 @@ An enterprise-grade, automated network configuration-drift detection and remedia
 - [Why the Project is Useful](#why-the-project-is-useful)
 - [Feature Walkthrough & Screenshots](#feature-walkthrough--screenshots)
 - [Architecture & Tech Stack](#architecture--tech-stack)
+- [Database Schema Reference](#database-schema-reference)
+- [API Endpoint Reference](#api-endpoint-reference)
+- [Unit Testing & Error Boundaries](#unit-testing--error-boundaries)
 - [How to Get Started](#how-to-get-started)
   - [Prerequisites](#prerequisites)
   - [Quickstart with Docker Compose](#quickstart-with-docker-compose)
@@ -160,6 +163,150 @@ flowchart TD
 | **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
 | **Charts** | Recharts 2.12 | 14-day compliance and drift trendline analytics |
 | **Testing** | pytest, pytest-asyncio, httpx | 267 automated unit and integration tests |
+
+---
+
+## Database Schema Reference
+
+The database models are implemented using SQLAlchemy 2.0 with PostgreSQL 16 JSONB support and SQLite-compatible migrations (`backend/app/models/`). The schema consists of 17 core relational tables:
+
+```mermaid
+erDiagram
+    ROLES ||--o{ USERS : assigns
+    USERS ||--o{ BASELINES : authors
+    USERS ||--o{ REMEDIATION_PLANS : drafts
+    USERS ||--o{ APPROVALS : approves
+    USERS ||--o{ AUDIT_LOGS : triggers
+    DEVICE_GROUPS ||--o{ DEVICES : categorizes
+    DEVICE_GROUPS ||--o{ BASELINES : targets
+    DEVICE_GROUPS ||--o{ CHANGE_TICKETS : scopes
+    DEVICES ||--o{ DEVICE_CREDENTIALS : secures
+    DEVICES ||--o{ CONFIGURATION_SNAPSHOTS : yields
+    DEVICES ||--o{ DRIFT_EVENTS : experiences
+    DEVICES ||--o{ BACKUPS : snapshots
+    BASELINES ||--o{ BASELINE_RULES : defines
+    BASELINES ||--o{ DRIFT_EVENTS : evaluates
+    CONFIGURATION_SNAPSHOTS ||--o{ DRIFT_EVENTS : analyzes
+    DRIFT_EVENTS ||--o{ DRIFT_DETAILS : breaks_down
+    DRIFT_EVENTS ||--o{ REMEDIATION_PLANS : resolves
+    CHANGE_TICKETS ||--o{ DRIFT_EVENTS : authorizes
+    REMEDIATION_PLANS ||--o{ APPROVALS : gates
+    REMEDIATION_PLANS ||--o{ REMEDIATION_ACTIONS : executes
+    REMEDIATION_ACTIONS ||--o{ BACKUPS : pre_change
+```
+
+### Table Specifications
+
+| Table Name | Primary Key | Foreign Keys | Key Attributes & Business Role |
+| :--- | :--- | :--- | :--- |
+| `roles` | `id: CHAR(32)` | - | `name` (VARCHAR 32, UNIQUE: `admin`, `neteng`, `viewer`). RBAC role definitions. |
+| `users` | `id: CHAR(32)` | `role_id -> roles.id` | `username` (VARCHAR 64), `password_hash` (VARCHAR 255), `is_active` (BOOL). System users. |
+| `device_groups` | `id: CHAR(32)` | - | `name` (VARCHAR 64), `criticality_weight` (FLOAT: Lab 1.2, Classroom 1.0, Hostel 0.8, Event 0.5). |
+| `devices` | `id: CHAR(32)` | `device_group_id -> device_groups.id` | `hostname`, `ip_address`, `vendor`, `model`, `status`, `collection_mode`, `shadow_mode`. |
+| `device_credentials`| `id: CHAR(32)` | `device_id -> devices.id` | `username_enc` (BLOB), `secret_ref` (VARCHAR), `auth_type` (`SSH_KEY`/`PASSWORD`). |
+| `baselines` | `id: CHAR(32)` | `device_group_id`, `created_by` | `name`, `vendor`, `version` (INT), `is_active` (BOOL). Golden configuration baselines. |
+| `baseline_rules` | `id: CHAR(32)` | `baseline_id -> baselines.id` | `key_path`, `expected_value`, `rule_type`, `severity_weight` (1-100), `hard_compliance`. |
+| `configuration_snapshots` | `id: CHAR(32)` | `device_id -> devices.id` | `raw_config` (TEXT), `normalized_json` (JSON), `collected_at`, `collection_method`, `status`. |
+| `change_tickets` | `id: CHAR(32)` | `device_id`, `device_group_id` | `ticket_ref`, `source`, `external_ref`, `key_path_scope`, `valid_from`, `valid_to`, `status`. |
+| `drift_events` | `id: CHAR(32)` | `device_id`, `snapshot_id`, `baseline_id`, `matched_ticket_id` | `label`, `risk_score` (1-100), `underlying_severity`, `status` (`OPEN`, `REMEDIATED`). |
+| `drift_details` | `id: CHAR(32)` | `drift_event_id`, `rule_id` | `key_path`, `expected_value`, `actual_value`, `change_type` (`ADDED`/`REMOVED`/`MODIFIED`). |
+| `remediation_plans`| `id: CHAR(32)` | `drift_event_id`, `created_by` | `proposed_commands` (JSON), `status` (`DRAFT`, `APPROVED`, `APPLIED`, `FAILED`). |
+| `approvals` | `id: CHAR(32)` | `remediation_plan_id`, `approved_by` | `decision` (`APPROVED`/`REJECTED`), `comment`, `decided_at`. Dual-control four-eyes gate. |
+| `remediation_actions` | `id: CHAR(32)` | `remediation_plan_id`, `verification_snapshot_id` | `executed_commands` (JSON), `result` (`SUCCESS`, `ROLLED_BACK`, `ROLLBACK_FAILED`, `ABORTED`). |
+| `backups` | `id: CHAR(32)` | `device_id`, `taken_before_action_id` | `config_blob` (TEXT), `taken_at`. Pre-change configuration snapshot before any push. |
+| `alerts` | `id: CHAR(32)` | `related_id` | `type` (`CRITICAL_DRIFT`, `DEVICE_DOWN`), `message`, `acknowledged` (BOOL), `created_at`. |
+| `audit_logs` | `id: CHAR(32)` | `user_id -> users.id` | `action`, `target_type`, `target_id`, `before_state` (JSON), `after_state` (JSON), `timestamp`. |
+
+---
+
+## API Endpoint Reference
+
+The REST API provides 37 secure endpoints built on FastAPI with automated OpenAPI/Swagger documentation (`http://localhost:8000/docs`).
+
+| Domain | Method | Endpoint Path | Role Required | Description & Status Codes |
+| :--- | :--- | :--- | :--- | :--- |
+| **System** | `GET` | `/health`, `/api/health` | Public | Liveness and database/Redis readiness probes (`200 OK`). |
+| **Auth** | `POST` | `/api/auth/login` | Public | Authenticates credentials; returns JWT token and sets httpOnly cookie (`200`, `401`). |
+| **Auth** | `POST` | `/api/auth/refresh` | Public | Refreshes session JWT via refresh token cookie (`200`, `401`). |
+| **Auth** | `GET` | `/api/auth/me` | Viewer+ | Retrieves profile, permissions, and active role for current user (`200`, `401`). |
+| **Auth** | `POST` | `/api/auth/logout` | Viewer+ | Invalidates session and clears authentication cookies (`200`). |
+| **Devices** | `GET` | `/api/devices` | Viewer+ | Lists network devices filtered by zone, vendor, or status (`200`). |
+| **Devices** | `GET` | `/api/devices/groups` | Viewer+ | Lists campus physical device groups and zone criticality weights (`200`). |
+| **Devices** | `POST` | `/api/devices` | Admin | Registers a new campus device into inventory (`201`, `422`). |
+| **Devices** | `GET` | `/api/devices/{device_id}` | Viewer+ | Retrieves device metadata, IP address, and last polled timestamp (`200`, `404`). |
+| **Devices** | `PUT` | `/api/devices/{device_id}` | Admin | Updates device network settings, vendor, or zone group (`200`, `404`). |
+| **Devices** | `DELETE`| `/api/devices/{device_id}` | Admin | Decommissions device and cascades configuration history (`204`, `404`). |
+| **Devices** | `POST` | `/api/devices/{device_id}/credentials` | Admin | Sets encrypted SSH credentials via AES/Fernet envelope (`201`, `403`). |
+| **Devices** | `POST` | `/api/devices/{device_id}/poll` | NetEng+ | Enqueues async Celery task to scrape running-config over SSH (`202`, `409`). |
+| **Devices** | `GET` | `/api/devices/{device_id}/poll-status/{task_id}` | Viewer+ | Queries Celery task state and completion results (`200`, `404`). |
+| **Devices** | `POST` | `/api/devices/{device_id}/config-upload` | NetEng+ | Ingests offline running-config for air-gapped / legacy devices (`201`, `422`). |
+| **Devices** | `PUT` | `/api/devices/{device_id}/collection-mode` | Admin | Toggles between `SSH_SCRAPE` / `MANUAL_UPLOAD` and shadow mode (`200`). |
+| **Baselines** | `GET` | `/api/baselines` | Viewer+ | Lists all golden baselines with version history and active status (`200`). |
+| **Baselines** | `POST` | `/api/baselines` | NetEng+ | Creates declarative baseline with structured key-path rules (`201`, `422`). |
+| **Baselines** | `GET` | `/api/baselines/{baseline_id}` | Viewer+ | Retrieves baseline details and associated device group (`200`, `404`). |
+| **Baselines** | `GET` | `/api/baselines/{baseline_id}/rules` | Viewer+ | Lists compliance rules, regex patterns, and severity weights (`200`). |
+| **Baselines** | `PUT` | `/api/baselines/{baseline_id}/activate` | Admin | Atomically activates baseline version as the golden standard (`200`, `403`). |
+| **Tickets** | `GET` | `/api/tickets` | Viewer+ | Queries change tickets filtered by device or active window (`200`). |
+| **Tickets** | `POST` | `/api/tickets` | NetEng+ | Creates planned change ticket with start/end maintenance window (`201`). |
+| **Tickets** | `POST` | `/api/tickets/webhook` | External (HMAC) | Ingests ServiceNow/Jira change tickets verified via HMAC-SHA256 (`200`, `401`, `422`). |
+| **Drift** | `GET` | `/api/drift` | Viewer+ | Lists drift events with risk scores, campus zone weight, and labels (`200`). |
+| **Drift** | `GET` | `/api/drift/{drift_id}` | Viewer+ | Returns full evidence bundle, side-by-side diffs, and source line numbers (`200`). |
+| **Drift** | `POST` | `/api/drift/{drift_id}/mark-false-positive` | NetEng+ | Classifies drift as intentional/reviewed false positive with audit trail (`200`). |
+| **Remediation** | `GET` | `/api/remediation` | Viewer+ | Lists remediation plans, generated CLI commands, and execution status (`200`). |
+| **Remediation** | `POST` | `/api/remediation/{drift_id}/generate-plan` | NetEng+ | Generates templated CLI commands using whitelisted Jinja2 templates (`201`, `422`). |
+| **Remediation** | `GET` | `/api/remediation/{plan_id}` | Viewer+ | Retrieves command script, pre-change diffs, and verification steps (`200`). |
+| **Remediation** | `POST` | `/api/remediation/{plan_id}/apply` | NetEng+ | Executes approved plan with pre-change backup and rollback safety (`200`, `409`). |
+| **Remediation** | `POST` | `/api/remediation/{plan_id}/rollback` | Admin | Manually triggers restoration of pre-change backup on target device (`200`, `500`). |
+| **Approvals** | `GET` | `/api/approvals/pending` | Admin | Lists remediation plans awaiting dual-control peer approval (`200`). |
+| **Approvals** | `POST` | `/api/approvals/{plan_id}` | Admin | Approves or rejects plan with four-eyes enforcement: author cannot approve (`200`, `403`). |
+| **Alerts** | `GET` | `/api/alerts` | Viewer+ | Retrieves real-time alerts for critical drift and device connectivity (`200`). |
+| **Alerts** | `POST` | `/api/alerts/{alert_id}/ack` | NetEng+ | Acknowledges an active operational alert (`200`, `404`). |
+| **Audit** | `GET` | `/api/audit` | Viewer+ | Queries immutable append-only audit trail by user, action, and timestamp (`200`). |
+| **Dashboard** | `GET` | `/api/dashboard/summary` | Viewer+ | Aggregates campus compliance percentage, active alerts, and 14-day trends (`200`). |
+
+---
+
+## Unit Testing & Error Boundaries
+
+For complete architectural specifications, see the dedicated guide: **[docs/testing-and-error-boundaries.md](docs/testing-and-error-boundaries.md)**.
+
+### Testing Architecture Summary
+
+The repository provides a three-tiered testing strategy guaranteeing deterministic, offline validation:
+1. **Unit Testing Purity (237 Tests - 100% Passing in ~22s):** Runs completely offline using an in-memory SQLite fixture (`sqlite:///:memory:`) and eager in-memory Celery broker (`memory://`), completely isolated from physical PostgreSQL or Redis servers.
+2. **Integration Testing (30 Tests):** Validates Celery async task dispatch, live SSH interaction with containerized switches, PostgreSQL transactional advisory locking, and end-to-end rollback verification.
+3. **Frontend Quality & E2E Testing:** Playwright automated test suite (`frontend/e2e/dashboard-workflows.spec.ts`) validating 6 core dashboard workflows (Authentication, Metrics, Devices, Drift, Four-Eyes Approvals, and Audit Trail).
+
+### Test & Linter Execution Commands
+
+```bash
+# 1. Run All 237 Offline Unit Tests (Zero External Services Needed)
+PYTHONPATH=backend ./.venv/bin/pytest backend/tests/unit -v
+
+# 2. Run Integration Tests (Requires Docker Stack)
+PYTHONPATH=backend ./.venv/bin/pytest backend/tests/integration -v
+
+# 3. Run Backend Python Linter (Ruff PEP8 & Typing Compliance)
+./.venv/bin/ruff check backend
+
+# 4. Run Frontend TypeScript Linter (ESLint Zero Warnings)
+cd frontend && npm run lint
+
+# 5. Run Automated Pre-Commit Pipeline (Ruff + Pytest + ESLint + Vite Build)
+./scripts/pre_commit.sh
+
+# 6. Run Playwright E2E UI Tests
+cd frontend && npm run test:e2e
+```
+
+### Architectural Error Boundaries
+
+The application enforces 5 resilient error boundaries:
+1. **Network & Protocol Boundary:** SSH timeouts (10s) and authentication failures cleanly catch `NetmikoBaseException`, transition device to `UNREACHABLE`, trigger `DEVICE_DOWN` alerts, and preserve historical configuration snapshots.
+2. **Concurrency & Advisory Locks:** Employs PostgreSQL transactional advisory locks (`pg_try_advisory_xact_lock`) preventing race conditions during simultaneous polling sweeps and remediation changes.
+3. **Security & Input Validation:** Zero user-supplied CLI; strictly parameterized Jinja2 templates. Shell metacharacters (`;&|$\`\\\"`) trigger `HTTP 422 Unprocessable Content` with `SecurityViolationError`. ITSM webhooks authenticated via constant-time HMAC-SHA256 (`HTTP 401` on mismatch).
+4. **Dual-Control Four-Eyes Gate:** Plan author can never approve their own plan (`HTTP 403 Forbidden`). Every decision is logged to the immutable audit trail.
+5. **Remediation & Automated Rollback:** Captures mandatory pre-change snapshot before pushing commands. If post-change verification fails, restores backup over a fresh SSH connection, re-verifies byte-level equality, and records `ROLLED_BACK`. If unprovable, flags `ROLLBACK_FAILED` for emergency dispatch.
 
 ---
 
@@ -355,6 +502,7 @@ See [docs/legacy-coexistence.md](docs/legacy-coexistence.md) for the staged migr
 ## Where to Get Help & Documentation
 
 - [architecture.md](architecture.md): Full architectural specification, sequence diagrams, and design records.
+- [docs/testing-and-error-boundaries.md](docs/testing-and-error-boundaries.md): Granular technical documentation on offline unit testing isolation (237 tests) and 5 architectural error boundaries.
 - [docs/evaluation-error-analysis.md](docs/evaluation-error-analysis.md): Labelled-corpus experiment: baselines vs pipeline vs ablations, FP/FN inspection, defects found and fixed. Definitions in [docs/labels-and-thresholds.md](docs/labels-and-thresholds.md); reproduce with [evaluation/README.md](evaluation/README.md).
 - [docs/validation/README.md](docs/validation/README.md): Stakeholder-validation kit (protocol, tasks, SUS, rating form, analysis) and the pre-pilot walkthrough. **Sessions with real participants have not been run yet.**
 - [docs/failure-cases.md](docs/failure-cases.md): Failure and edge-case catalogue (rollback, concurrency, credentials, tickets, time zones) and the scripted rollback demonstration (`./scripts/demo_rollback.sh`).

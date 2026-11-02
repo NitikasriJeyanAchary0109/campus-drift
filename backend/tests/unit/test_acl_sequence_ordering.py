@@ -4,24 +4,19 @@ Unit Tests for ACL Sequence Ordering & Overlap Analysis
 Verifies semantic first-match evaluation, overlap detection, cosmetic reordering,
 and ACL_ORDER_SIGNIFICANT classification per Project Review #2 Feedback.
 """
-import uuid
+import json
 from datetime import datetime, timezone
-import pytest
-from sqlalchemy.orm import Session
 
-from app.models.users import Role, User
-from app.models.devices import Device, DeviceGroup
-from app.models.configurations import ConfigurationSnapshot
 from app.models.baselines import Baseline, BaselineRule
-from app.services.normalization import normalize_config, values_equal
+from app.models.configurations import ConfigurationSnapshot
+from app.models.devices import Device, DeviceGroup
+from app.models.users import Role, User
 from app.services.acl_analyzer import (
-    parse_acl_rule,
-    rules_overlap,
     analyze_acl_permutation,
-    to_acl_rule_list,
-    is_acl_rule_list,
 )
 from app.services.drift import detect_drift
+from app.services.normalization import normalize_config, values_equal
+from sqlalchemy.orm import Session
 
 
 def test_acl_cosmetic_reordering_disjoint_rules():
@@ -154,12 +149,12 @@ def test_acl_drift_detection_pipeline_with_db(db_session: Session):
         baseline_id=baseline.id,
         key_path="access_list_ordered.10",
         rule_type="EXACT",
-        expected_value=[
+        expected_value=json.dumps([
             "permit host 192.168.1.1",
             "permit 10.10.1.0 0.0.0.255",
             "deny 10.10.0.0 0.0.255.255",
             "permit any",
-        ],
+        ]),
         severity_weight=90,
         hard_compliance=False,
     )
@@ -177,11 +172,11 @@ def test_acl_drift_detection_pipeline_with_db(db_session: Session):
         }
     }
     # Update baseline expected value for cosmetic test
-    rule.expected_value = [
+    rule.expected_value = json.dumps([
         "permit 10.10.2.0 0.0.0.255",
         "permit 10.10.1.0 0.0.0.255",
         "deny any",
-    ]
+    ])
     db_session.commit()
 
     now = datetime.now(timezone.utc)
@@ -212,12 +207,12 @@ def test_acl_drift_detection_pipeline_with_db(db_session: Session):
             ]
         }
     }
-    rule.expected_value = [
+    rule.expected_value = json.dumps([
         "permit host 192.168.1.1",
         "permit 10.10.1.0 0.0.0.255",
         "deny 10.10.0.0 0.0.255.255",
         "permit any",
-    ]
+    ])
     db_session.commit()
 
     snap_adversarial = ConfigurationSnapshot(

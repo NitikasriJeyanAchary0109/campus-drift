@@ -5,18 +5,18 @@ Tests Admin-only access to /api/audit, multi-field query filtering,
 RBAC enforcement (NetEng/Viewer blocked), and application-layer immutability
 guarantee (denies UPDATE and DELETE on audit_logs) per §9 and §13 of architecture.md.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
+from app.core.database import Base, get_db
+from app.core.security import create_access_token
+from app.main import app
+from app.models.audit import AuditLog
+from app.models.users import Role, User
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.core.security import create_access_token
-from app.models.users import Role, User
-from app.models.audit import AuditLog
-from app.main import app
 
 
 @pytest.fixture

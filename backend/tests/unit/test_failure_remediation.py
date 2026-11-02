@@ -9,15 +9,15 @@ restored configuration was re-read and matches the pre-change backup.
 from datetime import timedelta
 
 import pytest
-from fastapi import HTTPException
-
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
 from app.models.remediation import Backup, RemediationAction
 from app.services import remediation as rem
 from app.services.normalization import normalize_config
-from tests.failure_env import CLEAN_CFG, DRIFTED_CFG, build_env, open_event
-from tests.fakes import DeviceFault, FakeDevice
+from fastapi import HTTPException
+
+from tests.failure_env import DRIFTED_CFG, build_env, open_event
+from tests.fakes import FakeDevice
 
 
 def norm(text):
