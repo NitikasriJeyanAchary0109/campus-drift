@@ -1,18 +1,18 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
+import sidebarFox from '../assets/sidebar-fox.png';
 import {
   LayoutDashboard,
+  AlertTriangle,
   Server,
-  FileCheck2,
-  GitCompare,
+  Layers,
+  Ticket,
+  TrendingUp,
   Wrench,
-  CheckSquare,
-  Bell,
+  ShieldCheck,
   ScrollText,
   Settings,
-  ShieldCheck,
-  Ticket,
 } from 'lucide-react';
 
 interface NavItem {
@@ -24,34 +24,35 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
+  { name: 'Alerts', path: '/alerts', icon: AlertTriangle, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Devices', path: '/devices', icon: Server, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Baselines', path: '/baselines', icon: FileCheck2, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Change Tickets', path: '/tickets', icon: Ticket, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Drift Events', path: '/drift', icon: GitCompare, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
+  { name: 'Baselines', path: '/baselines', icon: Layers, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
+  { name: 'Tickets', path: '/tickets', icon: Ticket, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
+  { name: 'Drift', path: '/drift', icon: TrendingUp, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
   { name: 'Remediation', path: '/remediation', icon: Wrench, roles: ['Admin', 'NetworkEngineer'] },
-  { name: 'Approval Queue', path: '/approvals', icon: CheckSquare, roles: ['Admin', 'NetworkEngineer'] },
-  { name: 'Alerts', path: '/alerts', icon: Bell, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Audit Logs', path: '/audit', icon: ScrollText, roles: ['Admin'] },
+  { name: 'Approvals', path: '/approvals', icon: ShieldCheck, roles: ['Admin', 'NetworkEngineer'] },
+  { name: 'Audit', path: '/audit', icon: ScrollText, roles: ['Admin'] },
   { name: 'Settings', path: '/settings', icon: Settings, roles: ['Admin'] },
 ];
 
 export const Sidebar: React.FC = () => {
   const { user } = useAuthStore();
   const userRole = user?.role || 'Viewer';
-
   const visibleNavItems = navItems.filter((item) => item.roles.includes(userRole));
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col h-screen shrink-0 border-r border-slate-800">
-      <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-800">
-        <ShieldCheck className="h-7 w-7 text-sky-400" />
-        <div>
-          <h1 className="font-bold text-sm tracking-wide text-white">Campus Drift</h1>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wider">Network Engine</p>
-        </div>
+    <aside className="w-32 sm:w-36 md:w-40 shrink-0 flex flex-col items-center py-1 select-none z-10">
+      {/* Sidebar Mascot Fox sitting with laptop */}
+      <div className="w-full flex justify-center mb-1">
+        <img
+          src={sidebarFox}
+          alt="Mascot Fox"
+          className="h-14 sm:h-16 w-auto object-contain drop-shadow-[2px_2px_0_#000]"
+        />
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      {/* Chunky Navigation Buttons */}
+      <nav className="w-full space-y-1.5 flex-1">
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -60,32 +61,19 @@ export const Sidebar: React.FC = () => {
               to={item.path}
               end={item.path === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                `w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-black tracking-wider transition-all border-2 border-black font-display uppercase ${
                   isActive
-                    ? 'bg-sky-600 text-white shadow-sm shadow-sky-950/50'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    ? 'bg-[#ec1b16] text-white shadow-[0_3px_0_#991b1b]'
+                    : 'bg-[#f6f4ee] hover:bg-[#fefce8] text-[#1f2937] shadow-[2px_2px_0_#000] active:translate-y-0.5'
                 }`
               }
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{item.name}</span>
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{item.name}</span>
             </NavLink>
           );
         })}
       </nav>
-
-      <div className="p-4 border-t border-slate-800 text-xs text-slate-400">
-        <div className="flex items-center justify-between">
-          <span className="text-slate-300 font-semibold">Active Session</span>
-          <span className="font-mono text-[10px] px-1.5 py-0.5 bg-slate-800 rounded text-slate-300 border border-slate-700">
-            {userRole}
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-500 mt-1">
-          {user?.username ? `Logged in as @${user.username}` : 'Not authenticated'}
-        </p>
-      </div>
     </aside>
   );
 };
-

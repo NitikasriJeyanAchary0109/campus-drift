@@ -20,6 +20,23 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
       });
     });
 
+    await page.route('**/api/auth/refresh', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'fake-jwt-token-campus-drift-e2e',
+          token_type: 'bearer',
+          user: {
+            id: '11111111-1111-1111-1111-111111111111',
+            username: 'admin',
+            role: 'Admin',
+            is_active: true,
+          },
+        }),
+      });
+    });
+
     await page.route('**/api/auth/me', async (route) => {
       await route.fulfill({
         status: 200,
@@ -63,7 +80,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock device list
-    await page.route('**/api/devices', async (route) => {
+    await page.route('**/api/devices*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -93,7 +110,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock drift events
-    await page.route('**/api/drift', async (route) => {
+    await page.route('**/api/drift*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -113,7 +130,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock approvals queue
-    await page.route('**/api/approvals/pending', async (route) => {
+    await page.route('**/api/approvals*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -130,7 +147,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock alerts
-    await page.route('**/api/alerts', async (route) => {
+    await page.route('**/api/alerts*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -147,7 +164,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock audit logs
-    await page.route('**/api/audit', async (route) => {
+    await page.route('**/api/audit*', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

@@ -64,6 +64,12 @@ Thumbs.db
 .impeccable/
 .opencode/
 
+# Playwright
+test-results/
+playwright-report/
+frontend/test-results/
+frontend/playwright-report/
+
 # Validation sessions (facilitator-only / runtime)
 evaluation/validation/session_key.json
 .validation_pids
