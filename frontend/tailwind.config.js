@@ -6,6 +6,11 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        pixel: ['"Press Start 2P"', 'monospace'],
+        retro: ['Silkscreen', 'cursive', 'sans-serif'],
+        display: ['"Chakra Petch"', 'sans-serif'],
+      },
       colors: {
         brand: {
           50: '#f0f9ff',
