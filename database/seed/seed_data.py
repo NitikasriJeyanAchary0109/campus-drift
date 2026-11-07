@@ -99,6 +99,8 @@ def _rationale(key_path: str) -> str:
         return "Port security on edge ports stops rogue switches and MAC flooding."
     if key_path.startswith("ntp."):
         return "Devices must sync time only from the institutional NTP server so security logs can be correlated."
+    if key_path.endswith("trunk_native_vlan"):
+        return "Trunk uplinks carry untagged traffic in the management VLAN only; a student or guest VLAN as native VLAN opens a VLAN-hopping path."
     return "Part of the approved baseline for this device group."
 
 
@@ -261,6 +263,13 @@ def seed_database():
                         "hard_compliance": False,
                     },
                     {
+                        "key_path": "interface.*.switchport.trunk_native_vlan",
+                        "expected_value": "99",
+                        "rule_type": "EXACT",
+                        "severity_weight": 90,
+                        "hard_compliance": False,
+                    },
+                    {
                         "key_path": "ntp.server",
                         "expected_value": "10.10.0.1",
                         "rule_type": "EXACT",
@@ -293,6 +302,13 @@ def seed_database():
                         "expected_value": "true",
                         "rule_type": "EXACT",
                         "severity_weight": 70,
+                        "hard_compliance": False,
+                    },
+                    {
+                        "key_path": "interface.*.switchport.trunk_native_vlan",
+                        "expected_value": "99",
+                        "rule_type": "EXACT",
+                        "severity_weight": 90,
                         "hard_compliance": False,
                     },
                     {

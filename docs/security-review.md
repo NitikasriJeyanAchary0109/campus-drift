@@ -38,6 +38,34 @@ found the defects below. Findings marked **[run]** were reproduced by executing 
 | Four-eyes | The author of a plan cannot approve it (403, `PLAN_SELF_APPROVAL_BLOCKED`) and cannot apply it (403, `PLAN_SELF_APPLY_BLOCKED`, checked before any backup or connection). A plan with no recorded author needs an Admin. The Execute button is disabled for the author | `test_four_eyes.py`, `Remediation.test.tsx`, `e2e-real/04` | Roles are not separate people: one person with two accounts passes. Rollback by an Admin is allowed for the author, because it is the safety action |
 | Complete audit trail | Written in the same transaction as the change: sign-in (success, failure, inactive), token refresh and refusal, sign-out, device create, update and decommission, credentials, collection mode, baseline create and activate, ticket create, every ITSM delivery (accepted or refused, with the body and its SHA-256), alert acknowledgement, drift closure, plan, approval, apply, rollback. PostgreSQL triggers refuse update, delete and truncate, and chain each row to the previous one | `test_audit_coverage.py`, `integration/test_audit_hardening.py` | Reads are not audited. A refused webhook that failed its signature stores only a digest and the source address, so an unauthenticated sender cannot write text into the trail; a flood of bad deliveries still adds rows, so rate-limit the endpoint at the proxy |
 
+## Live acceptance scenarios
+
+`backend/tests/integration/test_acceptance_scenarios.py` runs three scenarios end to end: real SSH to the simulated switches, PostgreSQL, the API.
+The first run found three gaps; each is closed and has a regression test (`unit/test_acceptance_scenarios.py` for the logic, the integration file for the live run).
+
+| Scenario | What it does | Gap found | Fix |
+|---|---|---|---|
+| **A. Rogue troubleshooting event** | An engineer logs in over SSH and moves the native VLAN of `GigabitEthernet0/1` from 99 (management) to 10 (students). The platform must catch it, score it by zone, and produce a parameterised script | The parser never read `switchport trunk native vlan`, there was no baseline rule, no template, and the simulator could not apply VLAN commands: the change was invisible | Parser field `trunk_native_vlan`, a trunk-only wildcard rule `interface.*.switchport.trunk_native_vlan` (seeded, severity 90), a validated template (`validate_vlan_id`, `validate_interface_name`), evidence line, rationale text, simulator support |
+| **B. Maintenance-window bypass** | A webhook signed with the wrong key is sent, then a manual sweep runs | The delivery was refused (401) and audited, but **no alert was raised** | An authentication failure raises `SECURITY_CHANGE` (shown as Critical): one open alert per source address with an attempt count, so a sender cannot flood the page. A correctly signed but invalid delivery raises none |
+| **C. Rollback trap** | A change leaves `transport input none` on the vty lines. The pushing session stays open, so the old check (re-read through that same session) passed | The device was declared **SUCCESS** while new SSH logins were refused. Mutation check: with the new guard disabled the live test reports SUCCESS and fails | After the key-path check, `_management_access_check` opens a **new** SSH session and reads the configuration. If it cannot, the change is a failed change and the verified rollback runs through the session that is still open |
+
+Measured on the lab (Scenario C): detect and roll back in about 4 s, the restore itself about 1.5 s, against the 60 s target. Results by scenario:
+
+| Check | Result |
+|---|---|
+| A. Drift caught, expected `99`, actual `10`, nothing else flagged | Pass |
+| A. Score = 90 x zone weight: 1.0 gives 90 (High), 0.8 gives 72 (Medium), 0.5 gives 45 (Low) | Pass (live, weight changed and restored around each run) |
+| A. Script is exactly `interface GigabitEthernet0/1` / `switchport trunk native vlan 99`; `99; reload`, `4095`, `{{7*7}}` and a name carrying `;` are refused | Pass |
+| A. Apply needs approval (409 before it), then the trunk is back on 99 and the event is `RESOLVED` | Pass |
+| B. 401, no ticket stored, the sweep still labels the drift `Drift-Unauthorized-*`, alert raised, audit holds the digest and not the body | Pass |
+| B. Control: the same delivery signed with the right secret does suppress (`Drift-Authorized`) | Pass |
+| C. Faulty command in the plan: rolled back, device equals the backup, new SSH session works, alert, audit with `rollback_verified`, no manual rollback entry | Pass, with the lab reset command and with the diff-based restore used on real IOS |
+| C. Faulty command pushed beside the plan: the key-path check fails, rolled back | Pass |
+
+Limits: the simulator refuses a new SSH login when the vty lines exclude `ssh`; that models IOS but is not IOS. An engineer who sets the native VLAN to an
+unlisted value on a port with no baseline rule is not flagged (the rule applies to trunks the baseline covers: Classroom and Hostel cisco_ios; the Lab FRR baseline has none).
+If a switch ever refuses SSH during a test, the integration fixture restores it through `docker exec` (the console).
+
 ## Decisions, not defects
 - **Plans stay all-or-nothing.** If one change in a problem has no whitelisted template, or its value fails validation (a community name
   such as `pub;lic`), no plan is created and the operator gets a 422 naming the setting. The alternative, a partial plan, would leave the

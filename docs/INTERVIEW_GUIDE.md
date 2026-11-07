@@ -64,4 +64,4 @@ Example of the tree the parser builds for `line vty 0 4 / transport input telnet
 3. `./scripts/demo_rollback.sh`: applies a change that fails verification and shows the three byte-compared states (original, changed, restored).
 
 ## Commands to quote
-`PYTHONPATH=backend ./.venv/bin/pytest backend/tests/unit` (396 passed), `... backend/tests/integration` (42 passed, needs Docker), `ruff check backend`, `cd frontend && npm run lint && npm run build && npm run test:unit` (250 passed).
+`PYTHONPATH=backend ./.venv/bin/pytest backend/tests/unit` (425 passed), `... backend/tests/integration` (51 passed, needs Docker), `ruff check backend`, `cd frontend && npm run lint && npm run build && npm run test:unit` (251 passed).

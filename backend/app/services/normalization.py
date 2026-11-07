@@ -207,9 +207,12 @@ def _wildcard_applies(prefix_path: List[str], suffix_path: List[str], node: Any)
     """
     Whether a wildcard expansion is meaningful for this node. Port-security rules describe edge (access)
     ports; evaluating them on trunk uplinks or SVIs (Vlan99) would raise a false violation on every device.
+    A native-VLAN rule describes trunk ports only.
     """
     if prefix_path == ["interface"] and suffix_path[:1] == ["port_security"]:
         return isinstance(node, dict) and node.get("switchport", {}).get("mode") == "access"
+    if prefix_path == ["interface"] and suffix_path[:2] == ["switchport", "trunk_native_vlan"]:
+        return isinstance(node, dict) and node.get("switchport", {}).get("mode") == "trunk"
     return True
 
 

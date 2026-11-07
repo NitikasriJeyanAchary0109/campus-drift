@@ -1,8 +1,27 @@
 """Integration tests share three live simulated switches: every test starts from, and leaves, the pristine device configuration."""
+import subprocess
+
 import pytest
 from app.core.config import settings
 from app.models.devices import Device
 from app.services.remediation import _connect_to_device
+
+
+_CONSOLES = {"sw-hostel-01": ("sim_switch_hostel", "hostel_switch.cfg"), "sw-classroom-01": ("sim_switch_classroom", "classroom_switch.cfg")}
+
+
+def _console_reset(hostname: str) -> None:
+    """A simulated switch that refuses SSH cannot be reset over SSH; restore its pristine file through docker, as a console would."""
+    container, cfg = _CONSOLES.get(hostname, (None, None))
+    if not container:
+        return
+    try:
+        # write through the shell redirect and keep the file world-writable: the simulator runs as an unprivileged user, and a root-owned
+        # read-only copy would make every later configuration change silently do nothing
+        subprocess.run(["docker", "exec", container, "sh", "-c", f"cat /etc/network/{cfg}.pristine > /etc/network/{cfg} && chmod 777 /etc/network/{cfg}"],
+                       capture_output=True, timeout=20, check=False)
+    except Exception:
+        pass  # no docker here: the test that needs the device reports it
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +55,7 @@ def pristine_simulated_switches(db_session):
                 conn.send_command("simulator-reset-pristine")
                 conn.disconnect()
             except Exception:
-                pass  # a device that is down is reported by the test that needs it
+                _console_reset(device.hostname)  # SSH refused (a lockout scenario went wrong): use the out-of-band console
 
     _reset()
     yield

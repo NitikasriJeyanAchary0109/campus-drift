@@ -178,6 +178,15 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
                 "expected_value": validate_vlan_id((p.get("expected_value") or "")),
             },
         },
+        {
+            "pattern": "interface.*.switchport.trunk_native_vlan",
+            "rule_type": "EXACT",
+            "template": "interface {{ interface_name }}\n switchport trunk native vlan {{ expected_value }}",
+            "param_validator": lambda p: {
+                "interface_name": validate_interface_name((p.get("interface_name") or "")),
+                "expected_value": validate_vlan_id((p.get("expected_value") or "")),
+            },
+        },
     ],
     "frr": [
         {

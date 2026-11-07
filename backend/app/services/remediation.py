@@ -417,6 +417,34 @@ def restore_and_verify(db: Session, device: Device, backup_config: str, conn: An
                 pass
 
 
+def _management_access_check(db: Session, device: Device) -> Tuple[bool, str]:
+    """
+    After a change, prove the device can still be managed: open a NEW SSH session and read the configuration through it.
+    The session that pushed the change stays open even when the change closed the door behind it (for example 'transport input none'
+    only stops new logins), so checking through that session cannot see a lockout. A device that cannot be reached again is
+    rolled back through the session that is still open.
+    """
+    last = "no attempt was made"
+    for attempt in range(2):
+        if attempt:
+            time.sleep(settings.ROLLBACK_RETRY_DELAY_SECONDS)
+        fresh = None
+        try:
+            fresh = _connect_to_device(db, device)
+            if (fresh.send_command("show running-config") or "").strip():
+                return True, "a new SSH session works"
+            last = "a new SSH session connected but the device returned no configuration"
+        except Exception as e:
+            last = f"a new SSH session could not be opened after the change: {type(e).__name__}: {e}"
+        finally:
+            if fresh is not None:
+                try:
+                    fresh.disconnect()
+                except Exception:
+                    pass
+    return False, last
+
+
 def _read_running_config(conn: Any, attempts: int = 3) -> str:
     """Read the running config, retrying a timeout or dropped read a couple of times before giving up."""
     last: Optional[Exception] = None
@@ -734,6 +762,13 @@ def _apply_locked(
                     if actual_val is None or str(actual_val).lower() == "false":
                         verification_passed = False
                         failed_paths.append((detail.key_path, "MUST_EXIST", actual_val))
+
+        # The device must still accept a new management session; a change that locks the platform out is a failed change
+        if verification_passed:
+            reachable, access_detail = _management_access_check(db, device)
+            if not reachable:
+                verification_passed = False
+                failed_paths.append(("management access", "a new SSH session works", access_detail))
 
         # 6. Branch on Verification Result
         if verification_passed:

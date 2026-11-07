@@ -90,8 +90,8 @@ before the fixes (before-fixes table: full pipeline precision 0.797, FPR 0.255).
 
 | Check | Command | Result on 2026-11-07 |
 |---|---|---|
-| Backend unit tests (offline) | `PYTHONPATH=backend pytest backend/tests/unit` | 396 passed |
-| Backend integration tests | `PYTHONPATH=backend pytest backend/tests/integration` (needs `docker compose up -d`) | 42 passed |
+| Backend unit tests (offline) | `PYTHONPATH=backend pytest backend/tests/unit` | 425 passed |
+| Backend integration tests | `PYTHONPATH=backend pytest backend/tests/integration` (needs `docker compose up -d`) | 51 passed |
 | Backend lint | `ruff check backend` | clean |
 | Frontend lint and build | `cd frontend && npm run lint && npm run build` | clean |
 | Frontend component tests | `cd frontend && npm run test:unit` | 251 passed |

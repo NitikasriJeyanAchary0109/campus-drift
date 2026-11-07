@@ -82,6 +82,7 @@ def locate_source_line(raw_config: Optional[str], key_path: str, expected_value:
         prefixes = {
             ("port_security", "enabled"): ("switchport port-security", "no switchport port-security"),
             ("switchport", "trunk_allowed_vlans"): ("switchport trunk allowed vlan",),
+            ("switchport", "trunk_native_vlan"): ("switchport trunk native vlan",),
             ("switchport", "access_vlan"): ("switchport access vlan",),
             ("switchport", "mode"): ("switchport mode",),
         }.get((section, prop))

@@ -19,7 +19,7 @@ from app.services.normalization import normalize_config
 # Top-level sections that identify a device or are not meaningful as consensus policy.
 _SKIP_TOP_LEVEL = {"hostname", "version", "ip", "vlan", "access_list", "access_list_ordered", "router"}
 # Leaf names that are expected to differ per device or per port.
-_SKIP_LEAVES = {"ip_address", "access_vlan", "trunk_allowed_vlans", "description", "name"}
+_SKIP_LEAVES = {"ip_address", "access_vlan", "trunk_allowed_vlans", "trunk_native_vlan", "description", "name"}
 
 # (path predicate, severity_weight, hard_compliance, rationale) - first match wins.
 _SECURITY_HINTS: List[Tuple[str, int, bool, str]] = [

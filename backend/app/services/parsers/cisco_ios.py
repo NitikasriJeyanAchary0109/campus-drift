@@ -301,6 +301,7 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                             "mode": None,
                             "access_vlan": None,
                             "trunk_allowed_vlans": None,
+                            "trunk_native_vlan": None,
                             "enabled": True,
                         },
                         "port_security": {
@@ -412,6 +413,13 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                     if len(parts) < 4 or not parts[3].isdigit():
                         raise ParseError(f"Invalid access VLAN command at line {line_idx}")
                     iface["switchport"]["access_vlan"] = parts[3]
+                elif lower_cmd == "no switchport trunk native vlan":
+                    iface["switchport"]["trunk_native_vlan"] = None   # back to the default (VLAN 1)
+                elif lower_cmd.startswith("switchport trunk native vlan"):
+                    parts = stripped.split()
+                    if len(parts) != 5 or not parts[4].isdigit():
+                        raise ParseError(f"Invalid trunk native VLAN command at line {line_idx}")
+                    iface["switchport"]["trunk_native_vlan"] = parts[4]
                 elif lower_cmd.startswith("switchport trunk allowed vlan"):
                     # e.g. switchport trunk allowed vlan 10,20,99
                     parts = stripped.split(maxsplit=4)

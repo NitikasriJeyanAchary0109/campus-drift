@@ -8,6 +8,7 @@ Exposes endpoints for listing and creating change tickets per §9 of architectur
 import hashlib
 import hmac
 import json
+import re
 import time
 from typing import List, Optional
 from uuid import UUID
@@ -19,6 +20,7 @@ from app.core.config import settings
 from app.core.audit import body_evidence, record_audit
 from app.core.database import get_db
 from app.core.rbac import require_neteng, require_viewer
+from app.models.alerts import Alert
 from app.models.tickets import ChangeTicket
 from app.models.devices import Device, DeviceGroup
 from app.models.users import User
@@ -100,6 +102,30 @@ def create_ticket(
     return ticket
 
 
+def _raise_forged_webhook_alert(db: Session, reason: str, source_ip: Optional[str]) -> None:
+    """
+    A delivery that fails authentication is an attempt to open a maintenance window (and so suppress drift) without the ITSM's
+    secret. It raises a SECURITY_CHANGE alert (shown as Critical). One open alert per source address: repeats update its attempt
+    count, so an unauthenticated sender cannot flood the alerts page.
+    """
+    prefix = f"Rejected ITSM webhook from {source_ip or 'unknown source'}"
+    open_alert = (
+        db.query(Alert)
+        .filter(Alert.type == "SECURITY_CHANGE", Alert.acknowledged.is_(False), Alert.message.startswith(prefix + ":"))
+        .order_by(Alert.created_at.desc())
+        .first()
+    )
+    if open_alert:
+        found = re.search(r"Attempts: (\d+)$", open_alert.message)
+        attempts = int(found.group(1)) + 1 if found else 2
+        open_alert.message = f"{prefix}: {reason}. No ticket was created and no drift was suppressed. Attempts: {attempts}"
+        return
+    db.add(Alert(
+        type="SECURITY_CHANGE",
+        message=f"{prefix}: {reason}. No ticket was created and no drift was suppressed. Attempts: 1",
+    ))
+
+
 @router.post("/webhook", response_model=ChangeTicketOut)
 async def itsm_webhook(
     request: Request,
@@ -123,6 +149,8 @@ async def itsm_webhook(
         record_audit(db, "ITSM_WEBHOOK_REJECTED", "ticket", after={
             "http_status": exc.status_code, "reason": str(exc.detail)[:300], "source_ip": source_ip,
             "authenticated": authenticated, **body_evidence(raw_body, record_body=authenticated)})
+        if not authenticated and exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            _raise_forged_webhook_alert(db, str(exc.detail)[:120], source_ip)
         db.commit()
         raise
     record_audit(db, "ITSM_WEBHOOK_ACCEPTED", "ticket", ticket.id, after={

@@ -78,6 +78,11 @@ def generate_why_it_matters(key_path: str, rule_type: str, expected_val: Any, ac
             f"NTP configuration deviation ('{actual_val}'). Desynchronized system clocks break "
             f"forensic log correlation and undermine campus security auditing."
         )
+    if "trunk_native_vlan" in lower_path:
+        return (
+            f"Native VLAN on trunk '{key_path}' is '{actual_val}' instead of '{expected_val}'. Untagged frames on the trunk now "
+            f"land in that VLAN, which lets a host on a student or guest segment reach (or hop into) the management network."
+        )
     if "vlan" in lower_path:
         return (
             f"VLAN segmentation deviation on '{key_path}'. Improper VLAN tags risk leaking isolated traffic "

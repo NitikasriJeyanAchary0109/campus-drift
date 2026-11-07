@@ -77,6 +77,51 @@ def save_running_config(content: str):
         pass
 
 
+def vty_allows_ssh() -> bool:
+    """
+    A real switch refuses a new SSH login when the vty lines no longer list ssh ('transport input none' or 'telnet').
+    Without a 'transport input' line IOS accepts every protocol. Sessions already open keep working.
+    """
+    in_vty = False
+    for line in get_running_config().splitlines():
+        stripped = line.strip().lower()
+        if stripped.startswith("line vty"):
+            in_vty = True
+        elif in_vty and (stripped.startswith("line ") or stripped.startswith("interface ") or stripped == "!"):
+            in_vty = False
+        elif in_vty and stripped.startswith("transport input"):
+            tokens = stripped.split()[2:]
+            return "ssh" in tokens or "all" in tokens
+    return True
+
+
+def set_interface_line(lines: list, target_if: str, prefix: str, new_line: str = None) -> list:
+    """Replace (or, with new_line=None, remove) the interface child line starting with ``prefix``; add it when missing."""
+    out = []
+    in_target = False
+    done = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.lower() == f"interface {target_if.lower()}":
+            in_target = True
+            out.append(line)
+            continue
+        if in_target and (stripped.startswith("interface ") or stripped.startswith("line ") or stripped == "!"):
+            if new_line and not done:
+                out.append(f" {new_line}")
+                done = True
+            in_target = False
+        elif in_target and stripped.lower().startswith(prefix):
+            if new_line and not done:
+                out.append(f" {new_line}")
+            done = True
+            continue
+        out.append(line)
+    if in_target and new_line and not done:
+        out.append(f" {new_line}")
+    return out
+
+
 def mutate_config(cmd: str, context: dict) -> bool:
     """
     Apply configuration statements to running config and persist state to disk.
@@ -105,6 +150,17 @@ def mutate_config(cmd: str, context: dict) -> bool:
         target_if = submode.split(None, 1)[1]
         new_lines = []
         in_target_if = False
+
+        tokens = cmd_lower.split()
+        if cmd_lower == "no switchport trunk native vlan":
+            save_running_config("\n".join(set_interface_line(lines, target_if, "switchport trunk native vlan")))
+            return True
+        if cmd_lower.startswith("switchport trunk native vlan ") and len(tokens) == 5 and tokens[4].isdigit():
+            save_running_config("\n".join(set_interface_line(lines, target_if, "switchport trunk native vlan", cmd_strip)))
+            return True
+        if cmd_lower.startswith("switchport access vlan ") and len(tokens) == 4 and tokens[3].isdigit():
+            save_running_config("\n".join(set_interface_line(lines, target_if, "switchport access vlan", cmd_strip)))
+            return True
 
         if cmd_lower == "switchport port-security":
             has_ps = False
@@ -220,6 +276,10 @@ def mutate_config(cmd: str, context: dict) -> bool:
 
 def main():
     init_pristine_config()
+    if not vty_allows_ssh():
+        sys.stdout.write("\r\n% SSH access refused: 'transport input' on the vty lines does not include ssh\r\n")
+        sys.stdout.flush()
+        return
     config_mode = False
     context = {"submode": None}
     prompt = f"{HOSTNAME}# "

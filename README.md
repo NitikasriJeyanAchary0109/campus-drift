@@ -163,7 +163,7 @@ flowchart TD
 | **Frontend** | React 18, TypeScript 5.5, Vite 5.4 | Interactive Single Page Application (SPA) |
 | **Styling** | Tailwind CSS 3.4, Lucide React | Responsive operational dashboard with dark-mode accents |
 | **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
-| **Testing** | pytest, pytest-asyncio, httpx | 438 backend tests (396 offline unit + 42 integration) and 251 frontend component tests (Vitest) |
+| **Testing** | pytest, pytest-asyncio, httpx | 476 backend tests (425 offline unit + 51 integration) and 251 frontend component tests (Vitest) |
 
 ---
 
@@ -274,9 +274,9 @@ For complete architectural specifications, see the dedicated guide: **[docs/test
 ### Testing Architecture Summary
 
 The repository provides a three-tiered testing strategy guaranteeing deterministic, offline validation:
-1. **Unit Testing Purity (396 Tests, about 40s):** Runs completely offline using an in-memory SQLite fixture (`sqlite:///:memory:`) and eager in-memory Celery broker (`memory://`), completely isolated from physical PostgreSQL or Redis servers.
+1. **Unit Testing Purity (425 Tests, about 45s):** Runs completely offline using an in-memory SQLite fixture (`sqlite:///:memory:`) and eager in-memory Celery broker (`memory://`), completely isolated from physical PostgreSQL or Redis servers.
 2. **Integration Testing (42 Tests):** Validates Celery async task dispatch, live SSH interaction with containerized switches, PostgreSQL transactional advisory locking, and end-to-end rollback verification.
-3. **Frontend Quality & E2E Testing:** 250 Vitest component tests; a mocked-API Playwright suite (`frontend/e2e`, 6 workflows); and a black-box Playwright suite (`frontend/e2e-real`, 97 tests) that drives the real UI against the real API, PostgreSQL and the simulated switches. See `docs/ui-test-report.md`.
+3. **Frontend Quality & E2E Testing:** 251 Vitest component tests; a mocked-API Playwright suite (`frontend/e2e`, 6 workflows); and a black-box Playwright suite (`frontend/e2e-real`, 97 tests) that drives the real UI against the real API, PostgreSQL and the simulated switches. See `docs/ui-test-report.md`.
 
 ### Test & Linter Execution Commands
 
@@ -382,7 +382,7 @@ npm run dev
 
 ### Running Automated Tests
 
-Run the complete 297-test backend suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
+Run the complete 476-test backend suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
 
 ```bash
 # From project root (with postgres & redis running)
@@ -390,7 +390,7 @@ pytest backend/tests -v
 ```
 
 ```text
-================== 297 passed in ~90s (267 unit + 30 integration) ==================
+================== 476 passed in ~8 min (425 unit + 51 integration) ==================
 ```
 
 ---
