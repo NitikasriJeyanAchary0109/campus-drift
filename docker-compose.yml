@@ -63,7 +63,7 @@ services:
       dockerfile: docker/Dockerfile.backend
     container_name: campus_drift_celery_worker
     restart: unless-stopped
-    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info -Q celery,remediation
     volumes:
       - ./backend:/app
     environment:

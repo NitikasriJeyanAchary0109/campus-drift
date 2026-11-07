@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Upload, Eye, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { errorText } from '../lib/errors';
 
 export type CollectionMode = 'SSH_POLL' | 'MANUAL_UPLOAD' | 'PAUSED';
 
@@ -20,12 +21,12 @@ const MODE_LABELS: Record<string, string> = {
 export const ModeBadge: React.FC<{ mode: string; shadow: boolean }> = ({ mode, shadow }) => (
   <span className="inline-flex items-center gap-1">
     <span
-      className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${MODE_STYLES[mode] || MODE_STYLES.PAUSED}`}
+      className={`px-2 py-0.5 rounded text-xs font-semibold border ${MODE_STYLES[mode] || MODE_STYLES.PAUSED}`}
     >
       {MODE_LABELS[mode] || mode}
     </span>
     {shadow && (
-      <span className="px-2 py-0.5 rounded text-[11px] font-semibold border bg-amber-50 text-amber-700 border-amber-200">
+      <span className="px-2 py-0.5 rounded text-xs font-semibold border bg-amber-50 text-amber-700 border-amber-200">
         Shadow
       </span>
     )}
@@ -101,8 +102,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
     },
     onError: (err: any) => {
       setResult(null);
-      const detail = err.response?.data?.detail;
-      setError(typeof detail === 'string' ? detail : err.message || 'Upload failed.');
+      setError(errorText(err, 'Upload failed.'));
     },
   });
 
@@ -112,7 +112,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
       return res.data;
     },
     onSuccess: refresh,
-    onError: (err: any) => setError(err.response?.data?.detail || err.message || 'Mode change failed.'),
+    onError: (err: any) => setError(errorText(err, 'Mode change failed.')),
   });
 
   const handleFile = (file: File | undefined) => {
@@ -133,7 +133,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
   const uploadBlocked = collectionMode === 'PAUSED';
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-6 space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-violet-600" />
@@ -170,7 +170,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
         )}
       </div>
 
-      <p className="text-[11px] text-slate-500 leading-relaxed">
+      <p className="text-xs text-slate-500 leading-relaxed">
         Upload a <span className="font-mono">show running-config</span> captured from the console or a legacy backup
         system. It goes through the same normalisation, drift scoring and change-ticket matching as SSH-collected
         configurations. Remediation is never pushed to Shadow or non-SSH devices; apply approved commands on the
@@ -207,7 +207,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
             placeholder={`Paste the running-config for ${hostname} here, or choose a file above`}
             rows={8}
             spellCheck={false}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-[11px] text-slate-800 focus:outline-none focus:border-violet-500"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-xs text-slate-800 focus:outline-none focus:border-violet-500"
           />
 
           <div className="flex flex-wrap items-center gap-3">
@@ -238,7 +238,7 @@ export const LegacyCoexistenceCard: React.FC<Props> = ({
           )}
         </div>
       ) : (
-        <p className="text-xs text-slate-400">Viewers cannot upload configurations.</p>
+        <p className="text-xs text-slate-500">Viewers cannot upload configurations.</p>
       )}
 
       {error && (

@@ -5,7 +5,7 @@ celery_app = Celery(
     "campus_drift",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.collection"],
+    include=["app.tasks.collection", "app.tasks.remediation"],
 )
 
 celery_app.conf.update(
@@ -17,6 +17,11 @@ celery_app.conf.update(
     task_track_started=True,
     task_always_eager=settings.CELERY_TASK_ALWAYS_EAGER,
     task_eager_propagates=True,
+    # Device pushes get their own queue, so a long SSH change never waits behind (or starves) the periodic polling.
+    task_routes={"app.tasks.remediation.*": {"queue": "remediation"}},
+    task_default_queue="celery",
+    worker_prefetch_multiplier=1,
+    task_acks_late=True,
 )
 
 celery_app.conf.beat_schedule = {

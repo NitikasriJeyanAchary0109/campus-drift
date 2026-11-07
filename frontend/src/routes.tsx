@@ -1,21 +1,42 @@
 import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/useAuthStore';
-import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Devices } from './pages/Devices';
-import { DeviceDetails } from './pages/DeviceDetails';
-import { Baselines } from './pages/Baselines';
-import { BaselineDetails } from './pages/BaselineDetails';
-import { DriftEvents } from './pages/DriftEvents';
-import { DriftDetails } from './pages/DriftDetails';
-import { Remediation } from './pages/Remediation';
-import { ApprovalQueue } from './pages/ApprovalQueue';
-import { Alerts } from './pages/Alerts';
-import { AuditLogs } from './pages/AuditLogs';
-import { Settings } from './pages/Settings';
-import { Tickets } from './pages/Tickets';
+import { RouteLoading } from './components/RouteState';
+
+// Every route except Login is loaded on demand, so the sign-in page only downloads what it needs.
+const page = <T extends Record<string, React.ComponentType<any>>>(load: () => Promise<T>, name: keyof T) =>
+  React.lazy(() => load().then((m) => ({ default: m[name] })));
+
+const Layout = page(() => import('./components/Layout'), 'Layout');
+const Dashboard = page(() => import('./pages/Dashboard'), 'Dashboard');
+const Devices = page(() => import('./pages/Devices'), 'Devices');
+const DeviceDetails = page(() => import('./pages/DeviceDetails'), 'DeviceDetails');
+const Baselines = page(() => import('./pages/Baselines'), 'Baselines');
+const BaselineDetails = page(() => import('./pages/BaselineDetails'), 'BaselineDetails');
+const DriftEvents = page(() => import('./pages/DriftEvents'), 'DriftEvents');
+const DriftDetails = page(() => import('./pages/DriftDetails'), 'DriftDetails');
+const Remediation = page(() => import('./pages/Remediation'), 'Remediation');
+const ApprovalQueue = page(() => import('./pages/ApprovalQueue'), 'ApprovalQueue');
+const Alerts = page(() => import('./pages/Alerts'), 'Alerts');
+const AuditLogs = page(() => import('./pages/AuditLogs'), 'AuditLogs');
+const Settings = page(() => import('./pages/Settings'), 'Settings');
+const Tickets = page(() => import('./pages/Tickets'), 'Tickets');
+const NotFound = page(() => import('./pages/StatePages'), 'NotFound');
+const Forbidden = page(() => import('./pages/StatePages'), 'Forbidden');
+
+const PageFallback: React.FC = () => <RouteLoading message="Loading..." />;
+
+// Development-only component gallery: the condition is a build-time constant, so production builds drop it.
+const UiKit = import.meta.env.DEV ? React.lazy(() => import('./pages/dev/UiKit').then((m) => ({ default: m.UiKit }))) : null;
+
+type Role = 'Admin' | 'NetworkEngineer' | 'Viewer';
+/** Show a page only to the roles that may use it (the API checks the same rule on every call). */
+const RequireRole: React.FC<{ roles: Role[]; children: React.ReactElement }> = ({ roles, children }) => {
+  const role = useAuthStore((s) => s.user?.role) as Role | undefined;
+  return role && roles.includes(role) ? children : <Forbidden />;
+};
+const EDITORS: Role[] = ['Admin', 'NetworkEngineer'];
 
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
   const { isAuthenticated, isLoadingAuth, initAuth } = useAuthStore();
@@ -28,14 +49,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }
   }, [isLoadingAuth, initAuth]);
 
   if (isLoadingAuth) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300">
-        <div className="flex items-center gap-3">
-          <span className="h-5 w-5 rounded-full border-2 border-sky-500 border-t-transparent animate-spin"></span>
-          <span className="text-sm font-medium">Restoring secure session...</span>
-        </div>
-      </div>
-    );
+    return <RouteLoading fullScreen message="Restoring secure session..." />;
   }
 
   if (!isAuthenticated) {
@@ -47,8 +61,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }
 
 export const AppRoutes: React.FC = () => {
   return (
+    <React.Suspense fallback={<PageFallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      {UiKit && <Route path="/dev/ui" element={<UiKit />} />}
 
       <Route
         path="/"
@@ -66,15 +82,16 @@ export const AppRoutes: React.FC = () => {
         <Route path="tickets" element={<Tickets />} />
         <Route path="drift" element={<DriftEvents />} />
         <Route path="drift/:id" element={<DriftDetails />} />
-        <Route path="remediation" element={<Remediation />} />
-        <Route path="approvals" element={<ApprovalQueue />} />
+        <Route path="remediation" element={<RequireRole roles={EDITORS}><Remediation /></RequireRole>} />
+        <Route path="approvals" element={<RequireRole roles={EDITORS}><ApprovalQueue /></RequireRole>} />
         <Route path="alerts" element={<Alerts />} />
-        <Route path="audit" element={<AuditLogs />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="audit" element={<RequireRole roles={['Admin']}><AuditLogs /></RequireRole>} />
+        <Route path="settings" element={<RequireRole roles={['Admin']}><Settings /></RequireRole>} />
+        <Route path="*" element={<NotFound />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </React.Suspense>
   );
 };
 

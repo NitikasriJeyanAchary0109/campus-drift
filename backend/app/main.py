@@ -3,6 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.observability import install_middleware, setup_logging
 from app.api.health import router as health_router
 from app.api.auth import router as auth_router
 from app.api.devices import router as devices_router
@@ -14,6 +15,8 @@ from app.api.approvals import router as approvals_router
 from app.api.alerts import router as alerts_router
 from app.api.audit import router as audit_router
 from app.api.dashboard import router as dashboard_router
+
+setup_logging(settings.DEBUG)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -34,6 +37,8 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     safe = [{"loc": list(e.get("loc", [])), "msg": str(e.get("msg", "")), "type": str(e.get("type", ""))} for e in exc.errors()]
     return JSONResponse(status_code=422, content={"detail": safe})
 
+
+install_middleware(app)
 
 # CORS Middleware setup
 app.add_middleware(

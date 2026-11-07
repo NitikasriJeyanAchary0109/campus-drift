@@ -293,6 +293,26 @@ def test_encrypted_credential_storage_and_leak_prevention(device_test_env):
     assert secret_plaintext not in str(detail_res.json())
 
 
+def test_setting_credentials_is_audited_without_the_secret(device_test_env):
+    from app.models.audit import AuditLog
+
+    client, tokens, group_id, db_factory = device_test_env
+    headers = {"Authorization": f"Bearer {tokens['admin']}"}
+    device_id = client.post("/api/devices", json={
+        "hostname": "sw-audit-cred", "ip_address": "10.10.211.1", "vendor": "cisco_ios", "model": "x",
+        "device_group_id": str(group_id), "status": "ONLINE",
+    }, headers=headers).json()["id"]
+    res = client.post(f"/api/devices/{device_id}/credentials",
+                      json={"username": "audit_user", "secret": "AuditSecret123!", "auth_type": "password"}, headers=headers)
+    assert res.status_code == 200
+    db = db_factory()
+    rows = db.query(AuditLog).filter(AuditLog.action == "DEVICE_CREDENTIALS_SET", AuditLog.target_id == uuid.UUID(device_id)).all()
+    assert len(rows) == 1
+    assert rows[0].after_state == {"auth_type": "password"}
+    assert "AuditSecret123!" not in str(rows[0].after_state) and "audit_user" not in str(rows[0].after_state)
+    db.close()
+
+
 def test_list_device_groups_endpoint(device_test_env):
     """Verify Viewer+ can list device groups."""
     client, tokens, group_id, _ = device_test_env

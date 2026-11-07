@@ -74,3 +74,4 @@ frontend/playwright-report/
 evaluation/validation/session_key.json
 .validation_pids
 .validation_*.log
+backups/

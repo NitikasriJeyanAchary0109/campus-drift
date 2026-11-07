@@ -47,16 +47,13 @@ This report documents the architectural improvements, algorithmic enhancements, 
 
 The entire automated test suite was executed against PostgreSQL and Redis backing services:
 - **Baseline Test Suite (Phase 8):** 102 passing tests
-- **Phase 9 New Tests Added:** 16 tests
-  - Celery Polling Task Integration: 3 tests
-  - ACL Sequence Ordering & Overlap Analysis: 5 tests
-  - ITSM Webhook Receiver & Idempotency: 5 tests
-  - OpenConfig / gNMI Roadmap Stub: 3 tests
-- **Total Tests:** **118 / 118 PASSING (100% pass rate, 0 regressions)**
-- **Total Execution Time:** 73.67 seconds
+- **Phase 9 additions:** Celery polling (3), ACL sequence ordering (5), ITSM webhook (5), OpenConfig/gNMI roadmap stub (3) = 118 at the end of Phase 9.
+- **Current suite (Review 3):** **297 backend tests (267 offline unit + 30 integration), all passing**, plus 359 frontend component tests.
+  See [testing-and-error-boundaries.md](testing-and-error-boundaries.md) for the per-module inventory.
 
 ```
-================== 118 passed, 3 warnings in 73.67s (0:01:13) ==================
+PYTHONPATH=backend pytest backend/tests/unit         267 passed in ~25s   (offline, in-memory SQLite)
+PYTHONPATH=backend pytest backend/tests/integration   30 passed in ~61s   (Postgres, Redis, simulated SSH switches)
 ```
 
 ---
@@ -74,4 +71,4 @@ The entire automated test suite was executed against PostgreSQL and Redis backin
 - **HMAC Signatures:** Cryptographic integrity for external change approvals.
 - **RBAC Server-Side Enforcement:** Admin / NetworkEngineer / Viewer roles enforced via FastAPI dependencies.
 - **Command Injection Prevention:** Strict Jinja2 template parameterization; shell metacharacters strictly rejected with HTTP 422.
-- **Credential Protection:** AES-256 Fernet encryption at rest for all device credentials stored in the Vault.
+- **Credential Protection:** Fernet encryption at rest (AES-128-CBC + HMAC-SHA256; key from `VAULT_KEY`) for all device credentials stored in the Vault.

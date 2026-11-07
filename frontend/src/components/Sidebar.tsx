@@ -1,79 +1,107 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
-import sidebarFox from '../assets/sidebar-fox.png';
+import './shell.css';
+import './ui/pixel/theme';
 import {
-  LayoutDashboard,
+  Home,
   AlertTriangle,
   Server,
   Layers,
   Ticket,
-  TrendingUp,
+  Siren,
   Wrench,
   ShieldCheck,
   ScrollText,
   Settings,
+  ChevronDown,
+  MoreHorizontal,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+type Role = 'Admin' | 'NetworkEngineer' | 'Viewer';
 
 interface NavItem {
   name: string;
   path: string;
-  icon: React.ComponentType<{ className?: string }>;
-  roles: Array<'Admin' | 'NetworkEngineer' | 'Viewer'>;
+  icon: LucideIcon;
+  roles: Role[];
+  /** The few places most people need; everything else sits under "More". */
+  main?: boolean;
 }
 
+const ALL: Role[] = ['Admin', 'NetworkEngineer', 'Viewer'];
+const EDITORS: Role[] = ['Admin', 'NetworkEngineer'];
+
+// The daily path is: see what is wrong (Home), open it (Problems), check a device, approve a fix.
 const navItems: NavItem[] = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Alerts', path: '/alerts', icon: AlertTriangle, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Devices', path: '/devices', icon: Server, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Baselines', path: '/baselines', icon: Layers, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Tickets', path: '/tickets', icon: Ticket, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Drift', path: '/drift', icon: TrendingUp, roles: ['Admin', 'NetworkEngineer', 'Viewer'] },
-  { name: 'Remediation', path: '/remediation', icon: Wrench, roles: ['Admin', 'NetworkEngineer'] },
-  { name: 'Approvals', path: '/approvals', icon: ShieldCheck, roles: ['Admin', 'NetworkEngineer'] },
+  { name: 'Home', path: '/', icon: Home, roles: ALL, main: true },
+  { name: 'Problems', path: '/drift', icon: Siren, roles: ALL, main: true },
+  { name: 'Devices', path: '/devices', icon: Server, roles: ALL, main: true },
+  { name: 'Approvals', path: '/approvals', icon: ShieldCheck, roles: EDITORS, main: true },
+  { name: 'Alerts', path: '/alerts', icon: AlertTriangle, roles: ALL },
+  { name: 'Baselines', path: '/baselines', icon: Layers, roles: ALL },
+  { name: 'Tickets', path: '/tickets', icon: Ticket, roles: ALL },
+  { name: 'Remediation', path: '/remediation', icon: Wrench, roles: EDITORS },
   { name: 'Audit', path: '/audit', icon: ScrollText, roles: ['Admin'] },
   { name: 'Settings', path: '/settings', icon: Settings, roles: ['Admin'] },
 ];
 
+const Link: React.FC<{ item: NavItem }> = ({ item }) => {
+  const Icon = item.icon;
+  return (
+    <NavLink
+      to={item.path}
+      end={item.path === '/'}
+      title={item.name}
+      className="pxl-btn pxl-btn-nav pxl-btn-md pxl-focus w-full !justify-start !px-3"
+    >
+      <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={2.2} aria-hidden="true" />
+      <span className="dw-nav-label truncate">{item.name}</span>
+    </NavLink>
+  );
+};
+
+/** Sidebar: four main places, the rest under "More" (it opens by itself when you are on one of those pages). Items are filtered by role. */
 export const Sidebar: React.FC = () => {
   const { user } = useAuthStore();
-  const userRole = user?.role || 'Viewer';
-  const visibleNavItems = navItems.filter((item) => item.roles.includes(userRole));
+  const { pathname } = useLocation();
+  const userRole: Role = user?.role || 'Viewer';
+  const visible = navItems.filter((item) => item.roles.includes(userRole));
+  const main = visible.filter((i) => i.main);
+  const more = visible.filter((i) => !i.main);
+  const onMorePage = more.some((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
+  const [moreOpen, setMoreOpen] = React.useState(false);
+  const open = moreOpen || onMorePage;
 
   return (
-    <aside className="w-32 sm:w-36 md:w-40 shrink-0 flex flex-col items-center py-1 select-none z-10">
-      {/* Sidebar Mascot Fox sitting with laptop */}
-      <div className="w-full flex justify-center mb-1">
-        <img
-          src={sidebarFox}
-          alt="Mascot Fox"
-          className="h-14 sm:h-16 w-auto object-contain drop-shadow-[2px_2px_0_#000]"
-        />
-      </div>
+    <aside id="app-sidebar" className="dw-sidebar select-none">
+      <div className="rounded-lg bg-slate-900 p-3 shadow-sm">
+        <nav aria-label="Main" className="flex flex-col gap-1">
+          {main.map((item) => <Link key={item.path} item={item} />)}
 
-      {/* Chunky Navigation Buttons */}
-      <nav className="w-full space-y-1.5 flex-1">
-        {visibleNavItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-black tracking-wider transition-all border-2 border-black font-display uppercase ${
-                  isActive
-                    ? 'bg-[#ec1b16] text-white shadow-[0_3px_0_#991b1b]'
-                    : 'bg-[#f6f4ee] hover:bg-[#fefce8] text-[#1f2937] shadow-[2px_2px_0_#000] active:translate-y-0.5'
-                }`
-              }
-            >
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{item.name}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+          {more.length > 0 && (
+            <>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls="more-links"
+                onClick={() => setMoreOpen((v) => !v)}
+                className="pxl-btn pxl-btn-nav pxl-btn-md pxl-focus mt-2 w-full !justify-start !px-3"
+              >
+                <MoreHorizontal className="h-[18px] w-[18px] shrink-0" strokeWidth={2.2} aria-hidden="true" />
+                <span className="dw-nav-label flex-1 text-left">More</span>
+                <ChevronDown className={`dw-nav-label h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+              </button>
+              {open && (
+                <div id="more-links" className="flex flex-col gap-1 border-t border-slate-700 pt-2">
+                  {more.map((item) => <Link key={item.path} item={item} />)}
+                </div>
+              )}
+            </>
+          )}
+        </nav>
+      </div>
     </aside>
   );
 };

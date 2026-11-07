@@ -11,6 +11,7 @@ from typing import Optional, Tuple
 from uuid import UUID
 
 from netmiko import ConnectHandler
+from app.core.ssh import ssh_security_params
 from netmiko.exceptions import NetmikoTimeoutException, NetmikoAuthenticationException
 from sqlalchemy.orm import Session
 
@@ -158,6 +159,7 @@ def _collect_device_configuration(
         "password": secret,
         "fast_cli": False,
         "timeout": 10,
+        **ssh_security_params(),
     }
 
     # 2. Connect via SSH

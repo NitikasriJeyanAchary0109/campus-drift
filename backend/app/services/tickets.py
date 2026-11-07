@@ -39,10 +39,13 @@ def find_matching_ticket(
     key_path: str,
     timestamp: datetime,
     grace_period_minutes: int = 30,
+    since: Optional[datetime] = None,
 ) -> Optional[ChangeTicket]:
     """
     Find the best matching change ticket that authorizes a configuration deviation:
-    1. Filter OPEN tickets whose temporal window (valid_from to valid_to +/- grace window) includes timestamp.
+    1. Filter OPEN tickets whose temporal window (valid_from to valid_to +/- grace window) overlaps the interval in which
+       the change could have happened: [since, timestamp], where ``timestamp`` is the poll that noticed it and ``since``
+       the previous poll (default: just ``timestamp``).
     2. Filter tickets matching device scope (device_id == device.id, or group scope).
     3. Filter tickets whose key_path_scope covers the diff key_path.
     4. Resolve overlapping tickets deterministically by specificity:
@@ -51,7 +54,8 @@ def find_matching_ticket(
        - Closest valid_from
     """
     grace = timedelta(minutes=grace_period_minutes)
-    window_start = timestamp - grace
+    earliest = since if since is not None and since < timestamp else timestamp
+    window_start = earliest - grace
     window_end = timestamp + grace
 
     # Query candidate open tickets in time window

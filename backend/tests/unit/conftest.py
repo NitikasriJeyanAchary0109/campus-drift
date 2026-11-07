@@ -21,6 +21,23 @@ def configure_unit_celery_test_mode(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def isolated_login_throttle(monkeypatch):
+    """Unit tests never touch a real Redis: wrong passwords from earlier runs must not lock out this run."""
+    from app.api import auth as auth_api
+    from app.core.throttle import LoginThrottle
+    monkeypatch.setattr(auth_api, "throttle", LoginThrottle(None))
+    yield
+
+
+@pytest.fixture(autouse=True)
+def fast_remediation_retries(monkeypatch):
+    """The restore and verification-read back-off is real time in production; tests do not wait for it."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "ROLLBACK_RETRY_DELAY_SECONDS", 0.0)
+    yield
+
+
 @pytest.fixture
 def db_session():
     """Isolated in-memory SQLite database for unit tests."""

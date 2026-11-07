@@ -39,7 +39,7 @@ flowchart TD
 
     CORE --> DB[(PostgreSQL)]
     CORE --> REDIS[(Redis - cache / task queue)]
-    SCHED[APScheduler Worker] --> COLL
+    SCHED[Celery Beat + Worker] --> COLL
     REDIS --> SCHED
 
     COLL -->|SSH / Netmiko / NAPALM / SNMP| NET[Campus Network Devices]
@@ -70,7 +70,7 @@ flowchart TD
 | **Verification Service** | Re-pull config after change, confirm it matches intent | device | pass/fail + new snapshot | reuses Collection + Diff | internal | `configuration_snapshots`, `remediation_actions` |
 | **Alert Service** | Notify on critical drift / failures | events from Drift/Remediation | in-app alert, optional email/webhook | FastAPI background tasks | `/api/alerts/*` | `alerts` |
 | **Audit Log Service** | Immutable trail of every state-changing action | actions from every service | append-only log rows | SQLAlchemy | `/api/audit/*` | `audit_logs` |
-| **Scheduler/Worker** | Periodic device polling, retries | cron-like schedule | triggers Collection Service | **APScheduler** (see §15 for why not Celery) | internal | `configuration_snapshots` |
+| **Scheduler/Worker** | Periodic device polling, retries | cron-like schedule | triggers Collection Service | **Celery + Redis** (ADR-003 in §15 replaced the original APScheduler design) | internal | `configuration_snapshots` |
 
 ---
 
@@ -78,7 +78,7 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant SCH as Scheduler (APScheduler)
+    participant SCH as Scheduler (Celery Beat)
     participant COLL as Collection Service
     participant NET as Network Device
     participant NORM as Normalizer
@@ -579,7 +579,7 @@ rules:
 | Remediation command fails | Immediate rollback triggered automatically (§6) |
 | Verification fails | Automatic rollback + CRITICAL alert |
 | Rollback fails | Escalate to `ROLLBACK_FAILED` — highest severity alert, requires manual intervention, full state dumped to audit log |
-| Worker crashes | APScheduler jobstore persisted in Postgres, so missed jobs resume on restart |
+| Worker crashes | Celery tasks are acknowledged late and the Beat schedule is re-emitted, so missed polls run on the next tick; per-device advisory locks prevent double runs |
 | Database unavailable | FastAPI returns 503 with retry-after; frontend shows a banner, does not crash |
 
 ---
@@ -688,7 +688,7 @@ campus-drift-detector/
 
 ## 19. Recommended Final Architecture (Summary)
 
-A single FastAPI backend (modular by service, not by microservice), a React+TS+Vite SPA using React Query for server state, PostgreSQL as the single source of truth including an append-only audit log, APScheduler for polling (no separate broker required), Netmiko/NAPALM for device I/O against real or containerlab-simulated devices, and a strict "detection is always safe, remediation is always gated" design invariant running through every layer. This satisfies the assignment's requirement of an end-to-end working prototype, not an isolated model — every box in the diagram is a real, runnable component.
+A single FastAPI backend (modular by service, not by microservice), a React+TS+Vite SPA using React Query for server state, PostgreSQL as the single source of truth including an append-only audit log, Celery + Redis for background polling, Netmiko/NAPALM for device I/O against real or containerlab-simulated devices, and a strict "detection is always safe, remediation is always gated" design invariant running through every layer. This satisfies the assignment's requirement of an end-to-end working prototype, not an isolated model — every box in the diagram is a real, runnable component.
 
 ---
 
@@ -700,7 +700,7 @@ A single FastAPI backend (modular by service, not by microservice), a React+TS+V
 | **PostgreSQL** | JSONB support is ideal for storing `normalized_json` snapshots while keeping relational integrity for drift/approval/audit chains; free tier available (Supabase/Neon/Render) |
 | **SQLAlchemy + Alembic** | Mature ORM + migrations, keeps schema changes reviewable and versioned — important for a project graded partly on schema design |
 | **Netmiko/NAPALM** | Industry-standard, well-documented, works against real Cisco/Juniper gear and easily against containerlab/FRR simulated devices — one code path for demo and "real" deployment |
-| **APScheduler over Celery+Redis** | Removes an entire infra layer (broker/worker separation) a student team doesn't need at this scale; jobs persist to Postgres directly; Redis still available for caching but not mandatory |
+| **Celery + Redis over in-process APScheduler** (ADR-003) | Netmiko SSH calls block; a separate worker keeps them off the FastAPI event loop and lets workers scale. The original APScheduler choice was superseded after Review 1 feedback. |
 | **React + TypeScript + Vite** | Type safety end-to-end when paired with FastAPI's OpenAPI schema; Vite gives fast dev iteration for a team on a deadline |
 | **React Query over Redux** | The app's real complexity is server-state caching/invalidation (drift lists, alerts, approval queue) — React Query solves exactly that with far less boilerplate |
 | **JWT + RBAC** | Simple, stateless auth appropriate for a single-backend deployment; RBAC is a hard requirement given remediation's blast radius |

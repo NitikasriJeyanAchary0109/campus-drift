@@ -1,0 +1,60 @@
+/* Control classes: buttons, fields, checkbox. */
+
+.pxl-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--pxl-font-title); font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer; user-select: none;
+  background: var(--b-bg); color: var(--b-fg);
+  border: 1px solid var(--b-edge); border-radius: 8px;
+  box-shadow: var(--pxl-shadow-1);
+  transition: background-color 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.pxl-btn:hover:not(:disabled):not([aria-disabled='true']) { background: var(--b-hover); }
+.pxl-btn:active:not(:disabled):not([aria-disabled='true']),
+.pxl-btn[data-pressed='true'],
+.pxl-btn[aria-current='page'] { background: var(--b-active); box-shadow: none; }
+.pxl-btn:disabled, .pxl-btn[aria-disabled='true'] {
+  cursor: not-allowed; background: #f1f5f9; color: #64748b; border-color: #e2e8f0; box-shadow: none;
+}
+.pxl-btn[aria-busy='true'] { cursor: progress; }
+.pxl-btn-sm { padding: 5px 12px; font-size: 13px; min-height: 32px; }
+.pxl-btn-md { padding: 8px 16px; font-size: 14px; min-height: 40px; }
+.pxl-btn-lg { padding: 10px 22px; font-size: 16px; min-height: 48px; }
+
+.pxl-btn-primary   { --b-bg: #2563eb; --b-fg: #fff; --b-edge: #1d4ed8; --b-hover: #1d4ed8; --b-active: #1e40af; }
+.pxl-btn-secondary { --b-bg: #eff6ff; --b-fg: #1e3a8a; --b-edge: #bfdbfe; --b-hover: #dbeafe; --b-active: #bfdbfe; }
+.pxl-btn-ghost     { --b-bg: #fff; --b-fg: #0f172a; --b-edge: #cbd5e1; --b-hover: #f1f5f9; --b-active: #e2e8f0; }
+.pxl-btn-danger    { --b-bg: #dc2626; --b-fg: #fff; --b-edge: #b91c1c; --b-hover: #b91c1c; --b-active: #991b1b; }
+.pxl-btn-success   { --b-bg: #15803d; --b-fg: #fff; --b-edge: #166534; --b-hover: #166534; --b-active: #14532d; }
+.pxl-btn-nav       { --b-bg: transparent; --b-fg: #cbd5e1; --b-edge: transparent; --b-hover: rgba(255,255,255,.08); --b-active: #2563eb; box-shadow: none; font-weight: 500; }
+.pxl-btn-nav[aria-current='page'] { --b-fg: #fff; background: #2563eb; }
+
+.pxl-spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: pxl-rot 0.8s linear infinite; }
+@keyframes pxl-rot { to { transform: rotate(360deg); } }
+
+/* ---- fields ---- */
+.pxl-field {
+  width: 100%; min-height: 40px; padding: 8px 12px;
+  font-family: var(--pxl-font-body); font-size: 14px; font-weight: 400; line-height: 1.4; color: var(--dw-ink);
+  background: #fff; border: 1px solid var(--dw-border); border-radius: 8px;
+  box-shadow: var(--pxl-shadow-1);
+}
+.pxl-field::placeholder { color: #64748b; opacity: 1; }
+.pxl-field:hover:not(:disabled) { border-color: #94a3b8; }
+.pxl-field:focus { outline: none; border-color: var(--dw-blue); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25); }
+.pxl-field:disabled { cursor: not-allowed; background: #f1f5f9; color: #64748b; }
+.pxl-field[aria-invalid='true'] { border-color: var(--dw-red); }
+select.pxl-field { appearance: none; padding-right: 36px; cursor: pointer; }
+
+/* ---- checkbox ---- */
+.pxl-check-box {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex: none;
+  background: #fff; border: 1px solid #94a3b8; border-radius: 4px; color: transparent;
+}
+input:checked + .pxl-check-box { background: var(--dw-blue); border-color: var(--dw-blue); color: #fff; }
+input:focus-visible + .pxl-check-box { outline: 2px solid var(--dw-blue); outline-offset: 2px; }
+input:disabled + .pxl-check-box { background: #f1f5f9; border-color: #cbd5e1; }
+input:indeterminate + .pxl-check-box { background: var(--dw-blue); border-color: var(--dw-blue); color: #fff; }
+
+/* ---- forced states: only the /dev/ui kitchen sink uses these ---- */
+.pxl-force-hover { background: var(--b-hover) !important; }
+.pxl-force-focus { outline: 2px solid var(--dw-blue); outline-offset: 2px; }

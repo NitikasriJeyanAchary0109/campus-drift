@@ -391,13 +391,13 @@ def test_generate_remediation_plan_rejects_shell_metacharacters_with_security_vi
     with pytest.raises(HTTPException) as exc_info:
         generate_remediation_plan(db, event.id, neteng.id)
     assert exc_info.value.status_code == 422
-    assert "SecurityViolationError" in exc_info.value.detail or "Invalid IP address" in exc_info.value.detail
+    assert "SecurityViolationError" in exc_info.value.detail or "Invalid NTP server" in exc_info.value.detail
 
     # 2. Calling via API returns 422 Unprocessable Entity
     neteng_headers = {"Authorization": f"Bearer {tokens['neteng']}"}
     res = client.post(f"/api/remediation/{event.id}/generate-plan", headers=neteng_headers)
     assert res.status_code == 422
-    assert "SecurityViolationError" in res.json()["detail"] or "Invalid IP address" in res.json()["detail"]
+    assert "SecurityViolationError" in res.json()["detail"] or "Invalid NTP server" in res.json()["detail"]
 
 
 def test_list_remediation_plans_endpoint(remediation_test_env):

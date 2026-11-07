@@ -9,6 +9,7 @@ import ipaddress
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.services.parsers.frr_vtysh import looks_like_frr, parse_frr_vtysh
 from app.services.parsers.cisco_ios import (
     parse_cisco_ios,
     ParseError,
@@ -33,6 +34,10 @@ def normalize_config(raw_config: str, vendor: str = "cisco_ios") -> Dict[str, An
     """
     vendor_lower = vendor.lower() if vendor else "cisco_ios"
 
+    if vendor_lower == "frr_vtysh" or (vendor_lower == "frr" and looks_like_frr(raw_config)):
+        # Real FRRouting syntax. Devices registered as "frr" whose text is IOS-style (the lab simulator) keep using
+        # the IOS parser below, so existing baselines and snapshots are unaffected.
+        return parse_frr_vtysh(raw_config)
     if vendor_lower in ("cisco_ios", "cisco", "frr"):
         return parse_cisco_ios(raw_config)
     elif vendor_lower in ("openconfig_stub", "openconfig", "gnmi"):
@@ -42,6 +47,10 @@ def normalize_config(raw_config: str, vendor: str = "cisco_ios") -> Dict[str, An
         )
     else:
         raise NotImplementedError(f"Parser for vendor '{vendor}' is not supported yet.")
+
+
+# Keywords of "transport input"-style lists, where `telnet ssh` and `ssh telnet` mean the same thing
+UNORDERED_KEYWORDS = {"ssh", "telnet", "none", "all", "rlogin", "lat", "mop", "nasi", "pad", "udptn", "v120"}
 
 
 def _try_canonicalize_ip(val: str) -> Optional[str]:
@@ -61,10 +70,12 @@ def _sort_if_list_or_tokens(val: str) -> str:
         except Exception:
             pass
 
-    # Check for space-delimited tokens (e.g. 'telnet ssh' vs 'ssh telnet')
+    # Space-delimited tokens are order-insensitive only for protocol keyword sets (e.g. 'telnet ssh' vs 'ssh telnet');
+    # any other text keeps its order ('deny ip any any' is not 'any ip deny any')
     if " " in val:
         parts = [p.strip() for p in val.split() if p.strip()]
-        return " ".join(sorted(parts))
+        if all(p.lower() in UNORDERED_KEYWORDS for p in parts):
+            return " ".join(sorted(parts))
 
     return val
 
@@ -94,20 +105,16 @@ def values_equal(a: Any, b: Any) -> bool:
         exp_rules = to_acl_rule_list(b)
         act_rules = to_acl_rule_list(a)
         if exp_rules and act_rules:
-            if len(exp_rules) != len(act_rules):
-                return False
             analysis = analyze_acl_permutation(exp_rules, act_rules)
             return not analysis["is_drift"]
 
     # Handle list vs scalar comparisons (e.g. ['10.10.0.1'] vs '10.10.0.1')
+    # A list holding anything but exactly one value is not equal to a single value: ['10.10.0.1', '66.6.6.6'] is not
+    # '10.10.0.1' (an unauthorized extra NTP server must not pass as compliant)
     if isinstance(a, list) and not isinstance(b, list):
-        if len(a) == 1:
-            return values_equal(a[0], b)
-        return any(values_equal(x, b) for x in a)
+        return len(a) == 1 and values_equal(a[0], b)
     if isinstance(b, list) and not isinstance(a, list):
-        if len(b) == 1:
-            return values_equal(a, b[0])
-        return any(values_equal(a, x) for x in b)
+        return len(b) == 1 and values_equal(a, b[0])
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             return False
@@ -141,6 +148,27 @@ def values_equal(a: Any, b: Any) -> bool:
     return sorted_a.lower() == sorted_b.lower()
 
 
+_MISSING = object()
+
+
+def _descend(node: Any, parts: List[str]) -> Any:
+    """
+    Walk ``parts`` through nested dicts. A key may itself contain dots (the sub-interface 'GigabitEthernet0/0.100'),
+    so at each level the longest run of parts that names a key is tried first.
+    """
+    if not parts:
+        return node
+    if not isinstance(node, dict):
+        return _MISSING
+    for take in range(len(parts), 0, -1):
+        key = ".".join(parts[:take])
+        if key in node:
+            found = _descend(node[key], parts[take:])
+            if found is not _MISSING:
+                return found
+    return _MISSING
+
+
 def resolve_key_path(tree: Dict[str, Any], key_path: str) -> Any:
     """
     Traverse normalized tree using dot notation:
@@ -159,13 +187,9 @@ def resolve_key_path(tree: Dict[str, Any], key_path: str) -> Any:
             return "true"
         return None
 
-    parts = key_path.split(".")
-    curr = tree
-    for part in parts:
-        if isinstance(curr, dict) and part in curr:
-            curr = curr[part]
-        else:
-            return None
+    curr = _descend(tree, key_path.split("."))
+    if curr is _MISSING:
+        return None
 
     # If result is a single-element list of strings (e.g. ntp.server = ["10.10.0.1"]),
     # return joined or single string for straightforward rule comparison

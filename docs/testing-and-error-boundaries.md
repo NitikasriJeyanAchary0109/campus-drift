@@ -6,11 +6,11 @@ This document provides comprehensive technical specifications for the unit testi
 
 ## 1. Unit Testing Architecture & Isolation Guarantee
 
-The test suite contains **267 automated tests** (237 unit tests and 30 integration tests) achieving 100% test passing rates across all modules.
+The test suite contains **297 automated backend tests** (267 unit tests and 30 integration tests) achieving 100% test passing rates across all modules.
 
 ```
-Total Test Suite: 267 Tests
-├── Unit Tests (Offline Pure): 237 Tests (100% Pass Rate in ~22s)
+Total Test Suite: 297 Tests
+├── Unit Tests (Offline Pure): 267 Tests (100% Pass Rate in ~25s)
 │   ├── Tree-Diff & Semantic Parsing: 56 tests
 │   ├── Failure Injection & Rollback Safety: 50 tests
 │   ├── RBAC, Four-Eyes & Security: 24 tests
@@ -18,6 +18,8 @@ Total Test Suite: 267 Tests
 │   ├── Legacy Upload & Shadow Mode: 23 tests
 │   ├── Device Inventory & Credentials: 16 tests
 │   ├── Evaluation Corpus & Validation: 26 tests
+│   ├── Startup Configuration Guard (production secrets): 12 tests
+│   ├── FRR vtysh Parser: 17 tests
 │   └── API Routers & Dashboard: 16 tests
 └── Integration Tests (Stateful Stack): 30 Tests
     ├── Celery Worker Async Dispatch: 6 tests
@@ -29,7 +31,7 @@ Total Test Suite: 267 Tests
 
 ### 1.1 In-Memory SQLite Isolation Fixture (`backend/tests/unit/conftest.py`)
 
-To ensure that the 237 unit tests run with complete determinism, zero reliance on external network/PostgreSQL services, and sub-30-second execution, the unit test suite employs a dedicated in-memory SQLite fixture with isolated connection pooling:
+To ensure that the 267 unit tests run with complete determinism, zero reliance on external network/PostgreSQL services, and sub-30-second execution, the unit test suite employs a dedicated in-memory SQLite fixture with isolated connection pooling:
 
 ```python
 # backend/tests/unit/conftest.py
@@ -61,7 +63,7 @@ def engine():
 
 ---
 
-### 1.2 Comprehensive Unit Test Inventory (237 Tests across 26 Suites)
+### 1.2 Comprehensive Unit Test Inventory (267 Tests across 28 Suites)
 
 | Test Module | Test Count | Scope & Invariants Pinned |
 | :--- | :---: | :--- |
@@ -71,15 +73,17 @@ def engine():
 | `test_auth_api.py` | 5 | Bcrypt hashing, JWT issuance, refresh token rotation, httpOnly cookie verification. |
 | `test_baseline_mining.py` | 6 | Automatic golden baseline rule induction from legacy switch configurations. |
 | `test_baselines_api.py` | 6 | Declarative YAML/JSON baseline upload, rule validation, atomic activation. |
+| `test_config_security.py` | 12 | Production startup guard: rejects default or short `SECRET_KEY`, missing or equal `VAULT_KEY`, default webhook secret and `DEBUG`; vault key separation. |
 | `test_dashboard_api.py` | 5 | Compliance gauge computation, 14-day trendline aggregation, device counts. |
-| `test_devices_api.py` | 8 | Device registration, AES-256 credential encryption, RBAC authorization boundaries. |
+| `test_devices_api.py` | 9 | Device registration, Fernet (AES-128-CBC + HMAC-SHA256) credential encryption, RBAC authorization boundaries. |
 | `test_drift_engine.py` | 14 | Tree-diff evaluation, CIDR canonicalization, whitespace invariance, zone weights. |
-| `test_evaluation_harness.py` | 14 | Precision/Recall/F1 metrics on 120-config corpus, ablation studies, baseline comparisons. |
+| `test_evaluation_harness.py` | 14 | Precision/Recall/F1 metrics on the 100-device corpus, ablation studies, baseline comparisons. |
 | `test_failure_collection.py` | 11 | Netmiko timeout handling, auth failure marking device `UNREACHABLE`, socket drops. |
 | `test_failure_matrix.py` | 1 | Parametrized runner validating all 11 injected fault classes against recorded telemetry. |
 | `test_failure_remediation.py` | 22 | 12 automated rollback edge cases, empty config rejection, corrupted post-apply states. |
 | `test_failure_tickets_and_time.py` | 17 | Webhook HMAC rejection, timestamp skew, midnight boundary and timezone transitions. |
 | `test_four_eyes.py` | 8 | Dual-control gate: author cannot approve plan (`HTTP 403`), admin peer sign-off. |
+| `test_frr_parser.py` | 17 | FRRouting `vtysh` syntax (CIDR addresses, `exit` blocks, prefix-list `seq` order, BGP address-families), vendor dispatch, malformed input rejected. |
 | `test_health.py` | 3 | Database and cache readiness/liveness probe endpoints. |
 | `test_itsm_webhook.py` | 5 | HMAC-SHA256 signature verification, ServiceNow/Jira payload parsing, replay tolerance. |
 | `test_legacy_upload.py` | 23 | Manual config upload, shadow mode enforcement, bulk import CLI utilities. |

@@ -10,15 +10,20 @@ Implements the end-to-end Remediation and Rollback workflow per §6, §8, §9, �
 6. Automated rollback on verification failure: restores backup, re-verifies, raises CRITICAL alert, and logs audit.
 7. Admin manual rollback trigger.
 """
+import hashlib
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
 from netmiko import ConnectHandler
+from app.core.ssh import ssh_security_params
 from netmiko.exceptions import NetmikoBaseException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.alerts import Alert
 from app.models.audit import AuditLog
 from app.models.baselines import Baseline
@@ -30,13 +35,22 @@ from app.models.users import User
 from app.services.collection import resolve_device_endpoint
 from app.services.legacy import assert_remediation_allowed
 from app.services.locks import device_lock
-from app.services.normalization import normalize_config, values_equal
+from app.services.normalization import normalize_config, resolve_key_path, values_equal
 from app.services.remediation_templates import (
     render_remediation_commands,
     TemplateNotFoundError,
     SecurityViolationError,
+    sanitize_rendered_commands,
 )
 from app.services.vault import get_device_credential
+
+
+logger = logging.getLogger(__name__)
+
+
+def commands_digest(commands: List[str]) -> str:
+    """SHA-256 of the exact command list: what the approver saw is what may be sent."""
+    return hashlib.sha256("\n".join(commands).encode("utf-8")).hexdigest()
 
 
 def generate_remediation_plan(db: Session, drift_event_id: UUID, user_id: UUID) -> RemediationPlan:
@@ -70,6 +84,17 @@ def generate_remediation_plan(db: Session, drift_event_id: UUID, user_id: UUID) 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Device associated with drift event not found",
+        )
+
+    live = (
+        db.query(RemediationPlan)
+        .filter(RemediationPlan.drift_event_id == event.id, RemediationPlan.status.in_(("PENDING", "APPROVED", "APPLYING")))
+        .first()
+    )
+    if live is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This problem already has a {live.status.lower()} remediation plan ({live.id}). Decide on or apply that one first.",
         )
 
     proposed_commands: List[str] = []
@@ -167,6 +192,13 @@ def submit_approval(
             detail="Four-eyes rule: you drafted this remediation plan, so a different engineer or administrator must approve it.",
         )
 
+    # A plan with no recorded author (legacy rows) cannot prove who else is "a second person": only an Admin may approve it
+    if decision.upper() == "APPROVED" and plan.created_by is None and not (user.role and user.role.name == "Admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This plan has no recorded author, so the four-eyes rule cannot be checked; an administrator must approve it.",
+        )
+
     # Check for existing approval
     existing = db.query(Approval).filter(Approval.remediation_plan_id == plan.id).first()
     if existing:
@@ -177,11 +209,13 @@ def submit_approval(
 
     now = datetime.now(timezone.utc)
     approval = Approval(
+        id=uuid4(),
         remediation_plan_id=plan.id,
         approved_by=user.id,
         decision=decision.upper(),
         comment=comment,
         decided_at=now,
+        commands_sha256=commands_digest(list(plan.proposed_commands or [])),
     )
     db.add(approval)
 
@@ -231,6 +265,7 @@ def _connect_to_device(db: Session, device: Device):
         "password": secret,
         "fast_cli": False,
         "timeout": 10,
+        **ssh_security_params(),
     }
     return ConnectHandler(**device_params)
 
@@ -244,38 +279,109 @@ def _naive_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
 
 
-def _significant_lines(config: str) -> List[str]:
-    skip = ("building configuration", "current configuration", "version ", "end")
-    out = []
+_VOLATILE_PREFIXES = (
+    "building configuration", "current configuration", "version ", "end", "ntp clock-period", "boot-start-marker", "boot-end-marker",
+    "using ", "! last configuration change", "! nvram config last updated", "! no configuration change since last restart",
+)
+
+
+def _config_pairs(config: str) -> List[Tuple[Optional[str], str]]:
+    """
+    The configuration as (parent, line) pairs: a top-level line has parent None, an indented line belongs to the last
+    top-level line above it. Comments, blanks and volatile header lines are dropped. Order is kept.
+    """
+    pairs: List[Tuple[Optional[str], str]] = []
+    parent: Optional[str] = None
     for raw in config.splitlines():
-        line = raw.strip()
-        if line and not line.startswith("!") and not line.lower().startswith(skip):
-            out.append(line)
-    return out
+        text = raw.strip()
+        if not text or text.startswith("!") or text.lower().startswith(_VOLATILE_PREFIXES):
+            continue
+        if raw[:1] in (" ", "\t"):
+            pairs.append((parent, text))
+        else:
+            parent = text
+            pairs.append((None, text))
+    return pairs
+
+
+def _significant_lines(config: str) -> List[str]:
+    return [text for _, text in _config_pairs(config)]
 
 
 def _configs_equivalent(current: str, backup: str, vendor: str) -> bool:
-    """True when two running-configs mean the same thing (normalized trees equal; line sets if unparsable)."""
+    """
+    True when two running-configs mean the same thing: the normalized trees are equal AND every line, in its place in the
+    hierarchy, is the same. The tree alone is not enough: it models only the settings the parser knows, so a rogue local
+    user or an extra line outside the model would pass as "restored".
+    """
+    if set(_config_pairs(current)) != set(_config_pairs(backup)):
+        return False
     try:
         return normalize_config(current, vendor) == normalize_config(backup, vendor)
     except Exception:
-        return sorted(set(_significant_lines(current))) == sorted(set(_significant_lines(backup)))
+        return True   # unparsable text: the line-by-line comparison above already decided
+
+
+def _negate(line: str) -> str:
+    return line[3:] if line.lower().startswith("no ") else f"no {line}"
+
+
+def _restore_commands(current: str, backup: str) -> List[str]:
+    """
+    The configuration commands that turn ``current`` back into ``backup``: negate what the change added (a plain replay of the
+    backup cannot delete anything), then re-add what it removed. Child lines are sent inside their parent.
+    """
+    cur, bak = _config_pairs(current), _config_pairs(backup)
+    cur_set, bak_set = set(cur), set(bak)
+    removed_parents = {text for parent, text in cur if parent is None and (None, text) not in bak_set}
+    commands: List[str] = []
+
+    def emit(pairs: List[Tuple[Optional[str], str]], wanted: set, as_negation: bool) -> None:
+        last_parent: Optional[str] = None
+        for parent, text in pairs:
+            if (parent, text) in wanted:
+                continue
+            if as_negation and parent is not None and parent in removed_parents:
+                continue                                   # the whole block goes away with its parent
+            line = _negate(text) if as_negation else text
+            if parent is None:
+                if last_parent is not None:
+                    commands.append("exit")
+                    last_parent = None
+                commands.append(line)
+            else:
+                if parent != last_parent:
+                    if last_parent is not None:
+                        commands.append("exit")
+                    commands.append(parent)
+                    last_parent = parent
+                commands.append(line)
+        if last_parent is not None:
+            commands.append("exit")
+
+    emit(cur, bak_set, as_negation=True)
+    emit(bak, cur_set, as_negation=False)
+    return commands
 
 
 def _execute_rollback(conn: Any, backup_config: str, vendor: str = "cisco_ios") -> None:
     """
     Push the stored pre-change configuration back to the device. Transport failures propagate:
     a rollback that did not run must never be reported as one that did.
-    Lab simulators restore exactly via 'simulator-reset-pristine'; real IOS answers '% Invalid input'
-    (no exception), so when the device is still different afterwards the backup's commands are replayed in order.
-    The caller verifies the result either way.
+    Lab simulators restore exactly through their reset command, which is only sent when ALLOW_TEST_HOOKS is on (never in
+    production). Everywhere else the difference between the running configuration and the backup is computed and applied
+    (negations for what the change added, re-adding what it removed). The caller verifies the result either way.
     """
-    conn.send_command("simulator-reset-pristine")
-    if _configs_equivalent(conn.send_command("show running-config"), backup_config, vendor):
-        return  # already restored; replaying would only reorder lines
-    lines = _significant_lines(backup_config)
-    if lines:
-        conn.send_config_set(lines)
+    if settings.ALLOW_TEST_HOOKS:
+        conn.send_command("simulator-reset-pristine")
+        if _configs_equivalent(conn.send_command("show running-config"), backup_config, vendor):
+            return  # already restored; replaying would only reorder lines
+    current = conn.send_command("show running-config")
+    if _configs_equivalent(current, backup_config, vendor):
+        return
+    commands = _restore_commands(current, backup_config)
+    if commands:
+        conn.send_config_set(commands)
 
 
 def restore_and_verify(db: Session, device: Device, backup_config: str, conn: Any = None) -> Tuple[bool, str]:
@@ -288,6 +394,8 @@ def restore_and_verify(db: Session, device: Device, backup_config: str, conn: An
     opened: List[Any] = []
     try:
         for attempt in range(1 + ROLLBACK_RECONNECT_ATTEMPTS):
+            if attempt:
+                time.sleep(settings.ROLLBACK_RETRY_DELAY_SECONDS * attempt)   # a device that just dropped needs a moment
             try:
                 c = conn if (attempt == 0 and conn is not None) else None
                 if c is None:
@@ -307,6 +415,78 @@ def restore_and_verify(db: Session, device: Device, backup_config: str, conn: An
                 c.disconnect()
             except Exception:
                 pass
+
+
+def _read_running_config(conn: Any, attempts: int = 3) -> str:
+    """Read the running config, retrying a timeout or dropped read a couple of times before giving up."""
+    last: Optional[Exception] = None
+    for attempt in range(attempts):
+        if attempt:
+            time.sleep(settings.ROLLBACK_RETRY_DELAY_SECONDS)
+        try:
+            text = conn.send_command("show running-config")
+            if text and text.strip():
+                return text
+            last = RuntimeError("device returned an empty running-config")
+        except Exception as e:  # a read timeout on a busy device
+            last = e
+    raise last if last else RuntimeError("could not read the running-config")
+
+
+def _save_to_startup(conn: Any) -> bool:
+    """Persist a verified change (write memory) so a reload does not undo it. Never fails the change itself."""
+    if not settings.REMEDIATION_SAVE_CONFIG:
+        return False
+    try:
+        out = conn.send_command("write memory") or ""
+        return any(token in out.lower() for token in ("[ok]", "copy complete", "bytes copied"))
+    except Exception as e:
+        logger.warning("write memory failed: %s", e)
+        return False
+
+
+def _schedule_rollback_retry(plan_id: UUID) -> None:
+    """Ask the worker to try the restore again later (a device that dropped off often comes back within minutes)."""
+    from app.core.celery_app import celery_app
+    if settings.ROLLBACK_AUTO_RETRIES <= 0 or celery_app.conf.task_always_eager:
+        return
+    try:
+        from app.tasks.remediation import retry_rollback_task
+        retry_rollback_task.apply_async(args=[str(plan_id), 1], countdown=settings.ROLLBACK_AUTO_RETRY_DELAY_SECONDS)
+    except Exception as e:  # a missing broker must not turn an already-failed rollback into a crash
+        logger.warning("could not schedule the rollback retry for plan %s: %s", plan_id, e)
+
+
+def retry_failed_rollback(db: Session, plan_id: UUID, attempt: int) -> Tuple[str, str]:
+    """One delayed retry of a restore that could not be verified. Returns (outcome, detail): restored, still_failed, skipped."""
+    plan = db.query(RemediationPlan).filter(RemediationPlan.id == plan_id).first()
+    if plan is None or plan.status != "ROLLBACK_FAILED":
+        return "skipped", "the plan is no longer waiting for a rollback"
+    device = plan.drift_event.device
+    backup = (
+        db.query(Backup).join(RemediationAction, Backup.taken_before_action_id == RemediationAction.id)
+        .filter(RemediationAction.remediation_plan_id == plan.id).order_by(Backup.taken_at.desc()).first()
+    )
+    if backup is None:
+        return "skipped", "no backup found"
+    with device_lock(db, device.id) as acquired:
+        if not acquired:
+            return "still_failed", "device busy"
+        verified, detail = restore_and_verify(db, device, backup.config_blob)
+        if verified:
+            plan.status = "ROLLED_BACK"
+            plan.drift_event.status = "OPEN"
+            db.add(AuditLog(user_id=None, action="AUTO_ROLLBACK_RETRY_SUCCEEDED", target_type="remediation", target_id=plan.id,
+                            after_state={"plan_id": str(plan.id), "device": device.hostname, "backup_id": str(backup.id),
+                                         "attempt": attempt, "rollback_detail": detail}))
+            db.add(Alert(type="ROLLBACK_RECOVERED", related_id=plan.id,
+                         message=f"{device.hostname} was restored from backup {backup.id} by an automatic retry (attempt {attempt})."))
+            db.commit()
+            return "restored", detail
+        db.add(AuditLog(user_id=None, action="AUTO_ROLLBACK_RETRY_FAILED", target_type="remediation", target_id=plan.id,
+                        after_state={"plan_id": str(plan.id), "device": device.hostname, "attempt": attempt, "rollback_detail": detail}))
+        db.commit()
+        return "still_failed", detail
 
 
 def _claim_plan(db: Session, plan: RemediationPlan, user_id: UUID) -> str:
@@ -347,6 +527,7 @@ def _claim_plan(db: Session, plan: RemediationPlan, user_id: UUID) -> str:
 def _finish_rollback(
     db: Session, plan: RemediationPlan, action: RemediationAction, device: Device, user_id: UUID,
     backup: Optional[Backup], verified: bool, detail: str, reason: str, extra: Optional[dict] = None,
+    restore_seconds: Optional[float] = None,
 ) -> None:
     """Record the outcome of an automatic rollback: verified restore -> ROLLED_BACK, otherwise ROLLBACK_FAILED."""
     backup_id = str(backup.id) if backup else None
@@ -356,6 +537,9 @@ def _finish_rollback(
         if is_verification else f"Remediation error on {device.hostname}: {reason.removeprefix('error during remediation: ')}"
     )
     paths = f" Failed paths: {extra['failed_paths']}" if extra and "failed_paths" in extra else ""
+    within_target = restore_seconds is not None and restore_seconds <= settings.ROLLBACK_TARGET_SECONDS
+    if restore_seconds is not None and not within_target:
+        paths += f" The restore took {restore_seconds}s, over the {settings.ROLLBACK_TARGET_SECONDS}s target."
     if verified:
         action.result = "ROLLED_BACK"
         plan.status = "FAILED"
@@ -367,13 +551,16 @@ def _finish_rollback(
         message = (f"CRITICAL: {headline}. The automated rollback could NOT be verified ({detail}). "
                    f"The device configuration state is UNKNOWN: restore it manually from backup {backup_id} on the console.{paths}")
         audit_action, outcome = "REMEDIATION_ROLLBACK_FAILED", "NOT_VERIFIED"
+        _schedule_rollback_retry(plan.id)
     db.add(Alert(type="CRITICAL_DRIFT", related_id=action.id, message=message))
     db.add(AuditLog(
         user_id=user_id, action=audit_action, target_type="remediation", target_id=action.id,
         after_state={"plan_id": str(plan.id), "device": device.hostname,
                      "failure_reason": "Verification failed post-change" if is_verification else reason,
                      "rollback_result": outcome, "rollback_verified": verified, "rollback_detail": detail,
-                     "backup_id": backup_id, **(extra or {})},
+                     "backup_id": backup_id, "restore_seconds": restore_seconds,
+                     "restore_target_seconds": settings.ROLLBACK_TARGET_SECONDS, "restore_within_target": within_target,
+                     **(extra or {})},
     ))
     db.commit()
 
@@ -403,6 +590,35 @@ def apply_remediation_plan(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Remediation plan has not been approved. An Approval record with decision=APPROVED is required.",
+        )
+
+    # Four-eyes covers execution as well as approval: the person who wrote the plan never applies it
+    if plan.created_by is not None and plan.created_by == user_id:
+        db.add(AuditLog(user_id=user_id, action="PLAN_SELF_APPLY_BLOCKED", target_type="remediation", target_id=plan.id,
+                        after_state={"plan_id": str(plan.id)}))
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Four-eyes rule: you drafted this remediation plan, so a different engineer or administrator must apply it.",
+        )
+
+    # What was approved is what is sent: a plan whose commands changed after the decision is refused
+    if approval.commands_sha256 and approval.commands_sha256 != commands_digest(list(plan.proposed_commands or [])):
+        db.add(AuditLog(user_id=user_id, action="PLAN_COMMANDS_CHANGED_AFTER_APPROVAL", target_type="remediation", target_id=plan.id,
+                        after_state={"plan_id": str(plan.id), "approved_sha256": approval.commands_sha256,
+                                     "current_sha256": commands_digest(list(plan.proposed_commands or []))}))
+        db.add(Alert(type="SECURITY_CHANGE", related_id=plan.id, message=f"Remediation plan {plan.id} was modified after it was approved; apply refused."))
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The commands of this plan changed after it was approved. It will not be applied; write and approve a new plan.")
+
+    if force_fail_verification and not settings.ALLOW_TEST_HOOKS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="force_fail is a lab-only test hook and is disabled here.")
+
+    if plan.status == "ROLLBACK_FAILED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The last rollback of this plan could not be verified, so the device state is unknown. "
+                   "Restore it (manual rollback or the console) before applying again; a new backup now would capture the broken state.",
         )
 
     if plan.status == "APPLIED":
@@ -471,11 +687,16 @@ def _apply_locked(
         db.commit()
 
         # 3. Step (b) Apply Approved Commands via Netmiko
-        change_started = True  # from here on the device may be partially changed
-        conn.send_config_set(plan.proposed_commands)
+        # The commands are checked once more here: nothing but whitelisted-template output, free of control characters
+        commands = sanitize_rendered_commands(list(plan.proposed_commands or []))
+        if not commands:
+            raise RuntimeError("the plan holds no commands")
 
-        # 4. Step (c) Re-pull Running Config for Verification
-        post_change_config = conn.send_command("show running-config")
+        change_started = True  # from here on the device may be partially changed
+        conn.send_config_set(commands)
+
+        # 4. Step (c) Re-pull Running Config for Verification (a passing SSH timeout is retried, not treated as a failed change)
+        post_change_config = _read_running_config(conn)
         norm_post = normalize_config(post_change_config, device.vendor)
 
         # Save verification snapshot
@@ -516,9 +737,13 @@ def _apply_locked(
 
         # 6. Branch on Verification Result
         if verification_passed:
+            saved = _save_to_startup(conn)
             action.result = "SUCCESS"
             plan.status = "APPLIED"
             event.status = "RESOLVED"
+            if not saved:
+                db.add(Alert(type="CONFIG_NOT_SAVED", related_id=action.id,
+                             message=f"{device.hostname}: the fix was applied and verified but could not be saved to the startup configuration; a reload would undo it."))
             db.add(AuditLog(
                 user_id=user_id,
                 action="REMEDIATION_SUCCESS",
@@ -529,6 +754,7 @@ def _apply_locked(
                     "device": device.hostname,
                     "executed_commands": plan.proposed_commands,
                     "verification_snapshot_id": str(verification_snapshot.id),
+                    "saved_to_startup": saved,
                     "result": "SUCCESS",
                 },
             ))
@@ -536,11 +762,14 @@ def _apply_locked(
             return action
 
         # Verification FAIL -> Automatic Rollback, then PROVE the restore (§6)
+        restore_started = time.monotonic()
         verified, detail_msg = restore_and_verify(db, device, pre_change_config, conn)
+        restore_seconds = round(time.monotonic() - restore_started, 2)
         _finish_rollback(
             db, plan, action, device, user_id, backup, verified, detail_msg,
             reason="verification failed post-change",
             extra={"failed_paths": str(failed_paths or "forced verification failure")},
+            restore_seconds=restore_seconds,
         )
         return action
 
@@ -563,9 +792,11 @@ def _apply_locked(
             ) from e
 
         # The device may be partially changed: restore from the backup (reconnecting if needed) and verify
+        restore_started = time.monotonic()
         verified, detail_msg = restore_and_verify(db, device, pre_change_config, conn)
+        restore_seconds = round(time.monotonic() - restore_started, 2)
         _finish_rollback(db, plan, action, device, user_id, backup, verified, detail_msg, reason=f"error during remediation: {e}",
-                         extra={"error": str(e)})
+                         extra={"error": str(e)}, restore_seconds=restore_seconds)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=(f"Remediation execution failed: {e}. Rollback verified." if verified
@@ -635,6 +866,7 @@ def manual_rollback(db: Session, plan_id: UUID, admin_user: User) -> Remediation
 
         action.result = "ROLLBACK_FAILED"
         plan.status = "ROLLBACK_FAILED"
+        _schedule_rollback_retry(plan.id)
         db.add(Alert(type="CRITICAL_DRIFT", related_id=action.id,
                      message=(f"CRITICAL: Manual rollback on {device.hostname} could NOT be verified ({detail_msg}). "
                               f"Device configuration state is UNKNOWN; restore backup {backup.id} on the console.")))
@@ -651,12 +883,5 @@ def manual_rollback(db: Session, plan_id: UUID, admin_user: User) -> Remediation
 
 
 def _lookup_json_path(tree: dict, key_path: str) -> Any:
-    """Traverse a normalized dict by dot-delimited key path."""
-    curr = tree
-    for part in key_path.split("."):
-        if not isinstance(curr, dict):
-            return None
-        curr = curr.get(part)
-        if curr is None:
-            return None
-    return curr
+    """The value at a dotted key path, resolved exactly as drift detection resolves it (one implementation, no drift between them)."""
+    return resolve_key_path(tree, key_path)

@@ -34,6 +34,27 @@ X-Hub-Signature-256: sha256=4f6a98b...
 
 Requests with missing signatures or invalid digests are immediately rejected with **`401 Unauthorized`**.
 
+### Replay protection (timestamp)
+A captured, validly signed delivery can be sent again later. For example, replaying an old `OPEN` ticket would re-authorize a change
+that the ITSM has since closed. To prevent this, send the delivery time and sign it together with the body:
+
+```http
+X-ITSM-Timestamp: 1793123456            # epoch seconds, UTC
+X-ITSM-Signature: sha256=<HMAC-SHA256 over  "<timestamp>." + raw body>
+```
+
+A delivery whose timestamp is more than `ITSM_TIMESTAMP_TOLERANCE_SECONDS` (default 300) away from the server clock is refused with `401`,
+so keep the sender's clock on NTP. With `ITSM_REQUIRE_TIMESTAMP=true` (the default when `ENVIRONMENT=production`) the header is mandatory;
+without it a body-only signature is still accepted (development and the older examples below).
+
+### Scope is never implicit
+A ticket that names no device or group, or names one that does not exist (a mistyped hostname), is refused with `422`. It is never stored with
+campus-wide scope. A ticket reference that already belongs to another source (`servicenow` against `jira`) is refused with `409`.
+
+### Which poll a ticket window is matched against
+A change is dated by the poll that noticed it, but it happened at some time after the previous poll. The ticket window (plus the 30 minute
+grace) is matched against that whole interval, which is never longer than `ITSM_MAX_DETECTION_LAG_MINUTES` (default 360).
+
 ---
 
 ## 3. Payload Schema

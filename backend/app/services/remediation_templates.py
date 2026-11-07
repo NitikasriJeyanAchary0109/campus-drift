@@ -11,7 +11,8 @@ import fnmatch
 import ipaddress
 import re
 from typing import Any, Dict, List, Optional
-from jinja2 import Environment, select_autoescape
+from jinja2 import StrictUndefined
+from jinja2.sandbox import SandboxedEnvironment
 
 
 class TemplateNotFoundError(Exception):
@@ -33,6 +34,29 @@ def validate_ip_address(val: str) -> str:
         return val
     except ValueError as e:
         raise SecurityViolationError(f"Invalid IP address format '{val}': {e}") from e
+
+
+_HOSTNAME_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?$")
+
+
+def validate_ntp_server(val: str) -> str:
+    """An NTP server is an IPv4/IPv6 address or an RFC 1123 hostname (letters, digits, hyphens, dots)."""
+    val = val.strip()
+    try:
+        ipaddress.ip_address(val)
+        return val
+    except ValueError:
+        pass
+    if val and len(val) <= 253 and all(_HOSTNAME_LABEL.match(label) for label in val.split(".")):
+        return val
+    raise SecurityViolationError(f"Invalid NTP server '{val}': expected an IP address or a hostname")
+
+
+def validate_ntp_server_list(val: Optional[str]) -> List[str]:
+    """Several servers may be present on the device (comma or space separated); every one is validated."""
+    if not val:
+        return []
+    return [validate_ntp_server(s) for s in re.split(r"[,\s]+", val.strip()) if s]
 
 
 def validate_interface_name(val: str) -> str:
@@ -70,7 +94,14 @@ def validate_vlan_id(val: str) -> str:
 
 
 # 2. Strict Character Blacklist for Rendered Commands
-FORBIDDEN_CHARS = {";", "&", "|", "`", "$", "(", ")", "{", "}", "<", ">", "\x00"}
+# Shell metacharacters (kept: some device CLIs hand lines to a shell) plus what matters on an IOS-style CLI:
+# quotes and backslash, '?' (context help), '%' is allowed (IPv6 zone ids). Every control character is refused
+# separately (CR, LF, Ctrl-C, Ctrl-Z, ESC, NUL, DEL): a control character can split a command or leave config mode.
+FORBIDDEN_CHARS = {";", "&", "|", "`", "$", "(", ")", "{", "}", "<", ">", "\"", "'", "\\", "?"}
+
+
+def _has_control_character(line: str) -> bool:
+    return any(ord(c) < 32 or ord(c) == 127 for c in line)
 
 
 def sanitize_rendered_commands(commands: List[str]) -> List[str]:
@@ -82,6 +113,8 @@ def sanitize_rendered_commands(commands: List[str]) -> List[str]:
         line = raw_cmd.strip()
         if not line or line.startswith("!"):
             continue
+        if _has_control_character(raw_cmd.strip(" ")) :
+            raise SecurityViolationError(f"Command contains a control character: {line!r}")
         for char in FORBIDDEN_CHARS:
             if char in line:
                 raise SecurityViolationError(f"Command contains illegal shell character '{char}': {line}")
@@ -97,7 +130,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "EXACT",
             "template": "line vty 0 4\n transport input {{ expected_value }}",
             "param_validator": lambda p: {
-                "expected_value": validate_transport_protocol(p.get("expected_value", "ssh"))
+                "expected_value": validate_transport_protocol((p.get("expected_value") or "ssh"))
             },
         },
         {
@@ -105,7 +138,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "MUST_NOT_EXIST",
             "template": "no snmp-server community {{ community_name }}",
             "param_validator": lambda p: {
-                "community_name": validate_community_name(p.get("community_name", "public"))
+                "community_name": validate_community_name((p.get("community_name") or ""))
             },
         },
         {
@@ -113,7 +146,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "EXACT",
             "template": "interface {{ interface_name }}\n switchport port-security",
             "param_validator": lambda p: {
-                "interface_name": validate_interface_name(p.get("interface_name", ""))
+                "interface_name": validate_interface_name((p.get("interface_name") or ""))
             },
         },
         {
@@ -121,19 +154,19 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "MUST_EXIST",
             "template": "interface {{ interface_name }}\n switchport port-security",
             "param_validator": lambda p: {
-                "interface_name": validate_interface_name(p.get("interface_name", ""))
+                "interface_name": validate_interface_name((p.get("interface_name") or ""))
             },
         },
         {
             "pattern": "ntp.server",
             "rule_type": "EXACT",
             "template": (
-                "{% if actual_value %}no ntp server {{ actual_value }}\n{% endif %}"
+                "{% for s in actual_servers %}{% if s != expected_value %}no ntp server {{ s }}\n{% endif %}{% endfor %}"
                 "ntp server {{ expected_value }}"
             ),
             "param_validator": lambda p: {
-                "expected_value": validate_ip_address(p.get("expected_value", "")),
-                "actual_value": validate_ip_address(p.get("actual_value", "")) if p.get("actual_value") else None,
+                "expected_value": validate_ntp_server((p.get("expected_value") or "")),
+                "actual_servers": validate_ntp_server_list(p.get("actual_value")),
             },
         },
         {
@@ -141,8 +174,8 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "EXACT",
             "template": "interface {{ interface_name }}\n switchport access vlan {{ expected_value }}",
             "param_validator": lambda p: {
-                "interface_name": validate_interface_name(p.get("interface_name", "")),
-                "expected_value": validate_vlan_id(p.get("expected_value", "")),
+                "interface_name": validate_interface_name((p.get("interface_name") or "")),
+                "expected_value": validate_vlan_id((p.get("expected_value") or "")),
             },
         },
     ],
@@ -152,7 +185,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "EXACT",
             "template": "line vty\n transport input {{ expected_value }}",
             "param_validator": lambda p: {
-                "expected_value": validate_transport_protocol(p.get("expected_value", "ssh"))
+                "expected_value": validate_transport_protocol((p.get("expected_value") or "ssh"))
             },
         },
         {
@@ -160,7 +193,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "MUST_NOT_EXIST",
             "template": "no snmp-server community {{ community_name }}",
             "param_validator": lambda p: {
-                "community_name": validate_community_name(p.get("community_name", "public"))
+                "community_name": validate_community_name((p.get("community_name") or ""))
             },
         },
         {
@@ -168,7 +201,7 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "EXACT",
             "template": "interface {{ interface_name }}\n port-security",
             "param_validator": lambda p: {
-                "interface_name": validate_interface_name(p.get("interface_name", ""))
+                "interface_name": validate_interface_name((p.get("interface_name") or ""))
             },
         },
         {
@@ -176,45 +209,60 @@ TEMPLATES: Dict[str, List[Dict[str, Any]]] = {
             "rule_type": "MUST_EXIST",
             "template": "interface {{ interface_name }}\n port-security",
             "param_validator": lambda p: {
-                "interface_name": validate_interface_name(p.get("interface_name", ""))
+                "interface_name": validate_interface_name((p.get("interface_name") or ""))
             },
         },
         {
             "pattern": "ntp.server",
             "rule_type": "EXACT",
             "template": (
-                "{% if actual_value %}no ntp server {{ actual_value }}\n{% endif %}"
+                "{% for s in actual_servers %}{% if s != expected_value %}no ntp server {{ s }}\n{% endif %}{% endfor %}"
                 "ntp server {{ expected_value }}"
             ),
             "param_validator": lambda p: {
-                "expected_value": validate_ip_address(p.get("expected_value", "")),
-                "actual_value": validate_ip_address(p.get("actual_value", "")) if p.get("actual_value") else None,
+                "expected_value": validate_ntp_server((p.get("expected_value") or "")),
+                "actual_servers": validate_ntp_server_list(p.get("actual_value")),
             },
         },
     ],
 }
 
-# Jinja2 environment (sandboxed, autoescaped)
-_jinja_env = Environment(autoescape=select_autoescape())
+# Jinja2 environment: sandboxed (templates cannot reach Python internals), strict (a missing parameter is an error, never an empty
+# string in a CLI command). Autoescape is off on purpose: the output is CLI text, not HTML; the per-field validators above are the defence.
+_jinja_env = SandboxedEnvironment(autoescape=False, undefined=StrictUndefined)
 
 
-def extract_template_parameters(key_path: str, expected_val: Optional[str], actual_val: Optional[str]) -> Dict[str, Any]:
-    """Extract and categorize parameters from key path tokens and baseline values."""
+def _wildcard_segment(key_path: str, pattern: str) -> Optional[str]:
+    """
+    What the single '*' of ``pattern`` stands for in ``key_path``. The segment may itself contain dots
+    (the sub-interface GigabitEthernet0/0.100), so it is cut out by the fixed text around the wildcard, not by splitting.
+    """
+    if "*" not in pattern:
+        return None
+    head, _, tail = pattern.partition("*")
+    if not key_path.startswith(head) or (tail and not key_path.endswith(tail)):
+        return None
+    end = len(key_path) - len(tail)
+    segment = key_path[len(head):end]
+    return segment or None
+
+
+def extract_template_parameters(
+    key_path: str, expected_val: Optional[str], actual_val: Optional[str], pattern: Optional[str] = None
+) -> Dict[str, Any]:
+    """Extract and categorize parameters from the key path and baseline values."""
     params: Dict[str, Any] = {
         "expected_value": expected_val,
         "actual_value": actual_val,
     }
-
+    segment = _wildcard_segment(key_path, pattern) if pattern else None
     tokens = key_path.split(".")
+    lowered = key_path.lower()
 
-    # Extract interface name if path is interface.<name>.*
-    if len(tokens) >= 2 and tokens[0].lower() == "interface":
-        params["interface_name"] = tokens[1]
-
-    # Extract community name if path is snmp.community.<name>.*
-    if len(tokens) >= 3 and tokens[0].lower() == "snmp" and tokens[1].lower() == "community":
-        params["community_name"] = tokens[2]
-
+    if lowered.startswith("interface."):
+        params["interface_name"] = segment if segment is not None else tokens[1] if len(tokens) >= 2 else None
+    if lowered.startswith("snmp.community."):
+        params["community_name"] = segment if segment is not None else tokens[2] if len(tokens) >= 3 else None
     return params
 
 
@@ -247,7 +295,7 @@ def render_remediation_commands(
         )
 
     # 1. Extract raw parameters
-    raw_params = extract_template_parameters(key_path, expected_value, actual_value)
+    raw_params = extract_template_parameters(key_path, expected_value, actual_value, matching_entry["pattern"])
 
     # 2. Validate parameters strictly per field type
     validator = matching_entry["param_validator"]

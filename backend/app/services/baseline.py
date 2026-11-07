@@ -10,6 +10,7 @@ import yaml
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.core.audit import record_audit
 from app.models.baselines import Baseline, BaselineRule
 from app.models.devices import DeviceGroup
 from app.models.users import User
@@ -140,12 +141,15 @@ def create_baseline(
         )
         db.add(rule)
 
+    record_audit(db, "BASELINE_CREATED", "baseline", baseline.id, creator_user_id,
+                 after={"name": name, "version": next_version, "vendor": vendor_canonical,
+                        "device_group_id": str(device_group_id), "active": activate_on_create, "rules": len(rule_inputs)})
     db.commit()
     db.refresh(baseline)
     return baseline
 
 
-def activate_baseline(db: Session, baseline_id: UUID) -> Tuple[Baseline, Optional[UUID]]:
+def activate_baseline(db: Session, baseline_id: UUID, actor_id: Optional[UUID] = None) -> Tuple[Baseline, Optional[UUID]]:
     """
     Activate a baseline and deactivate all previous baselines for the same device_group and vendor.
     Returns (activated_baseline, previous_active_baseline_id).
@@ -175,6 +179,9 @@ def activate_baseline(db: Session, baseline_id: UUID) -> Tuple[Baseline, Optiona
     ).update({"is_active": False})
 
     target.is_active = True
+    record_audit(db, "BASELINE_ACTIVATED", "baseline", target.id, actor_id,
+                 before={"previous_active_baseline_id": str(prev_active_id) if prev_active_id else None},
+                 after={"name": target.name, "version": target.version})
     db.commit()
     db.refresh(target)
 

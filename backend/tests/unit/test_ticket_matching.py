@@ -176,3 +176,29 @@ def test_overlapping_tickets_specificity_resolution(ticket_env):
     assert match is not None
     # Specificity resolution chooses the device-specific ticket
     assert match.ticket_ref == "CHG-DEVICE-SPECIFIC"
+
+
+# --- the change happened between two polls, not at the poll that noticed it ----------------------------------------------
+def test_ticket_window_is_matched_against_the_interval_since_the_previous_poll(db_session):
+    from datetime import datetime, timedelta
+    from app.models.devices import Device, DeviceGroup
+    from app.models.tickets import ChangeTicket
+    from app.services.tickets import find_matching_ticket
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    group = DeviceGroup(name=f"G-{uid}", criticality_weight=1.0)
+    db_session.add(group)
+    db_session.flush()
+    device = Device(hostname=f"sw-{uid}", ip_address="10.9.9.9", vendor="cisco_ios", model="x", device_group_id=group.id, status="ONLINE")
+    db_session.add(device)
+    db_session.flush()
+    window_end = datetime(2026, 10, 27, 13, 0)
+    db_session.add(ChangeTicket(ticket_ref=f"T-{uid}", source="internal", device_id=device.id, key_path_scope="ntp.server",
+                                valid_from=datetime(2026, 10, 27, 11, 0), valid_to=window_end, status="OPEN"))
+    db_session.commit()
+    poll_after = window_end + timedelta(hours=3)                     # noticed three hours after the window closed
+    assert find_matching_ticket(db_session, device, "ntp.server", poll_after) is None
+    previous_poll = window_end - timedelta(minutes=30)               # but the previous poll was inside the window
+    assert find_matching_ticket(db_session, device, "ntp.server", poll_after, since=previous_poll) is not None
+    long_ago = window_end + timedelta(hours=2, minutes=40)           # a previous poll after window+grace: still no match
+    assert find_matching_ticket(db_session, device, "ntp.server", poll_after, since=long_ago) is None

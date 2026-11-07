@@ -6,7 +6,7 @@ Reproduce the evidence with:
 ```bash
 ./scripts/demo_rollback.sh            # live simulator: 3 device states + proof  -> evaluation/results/rollback_demo/
 python scripts/failure_matrix.py      # 11 injected faults vs what was recorded   -> evaluation/results/failure_matrix.md
-cd backend && pytest tests            # 247 tests (the failure suites are tests/*/test_failure_*.py)
+cd backend && pytest tests            # 297 tests (the failure suites are tests/*/test_failure_*.py)
 ```
 
 ## 1. Rollback demonstration (live simulator)

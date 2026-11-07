@@ -149,9 +149,9 @@ def test_race_on_ticket_creation_is_resolved_as_a_redelivery(env, monkeypatch):
     real_first = Query.first
     calls = {"n": 0}
 
-    def blind_first(self):  # the pre-insert lookups miss (the other worker has not committed yet from our point of view)
+    def blind_first(self):  # the two pre-insert ticket lookups miss (the other worker has not committed yet from our point of view)
         calls["n"] += 1
-        return None if calls["n"] <= 3 else real_first(self)
+        return None if 1 < calls["n"] <= 3 else real_first(self)   # call 1 is the device lookup: it must resolve
     monkeypatch.setattr(Query, "first", blind_first)
     r = webhook(env, payload)
     monkeypatch.setattr(Query, "first", real_first)

@@ -21,8 +21,14 @@ from app.models.devices import DeviceCredential, Device
 
 
 def _get_fernet() -> Fernet:
-    """Derive a valid 32-byte urlsafe base64 Fernet key deterministically from SECRET_KEY."""
-    derived_32 = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+    """
+    Derive a valid 32-byte urlsafe base64 Fernet key deterministically from VAULT_KEY.
+
+    Development databases created before VAULT_KEY existed keep working: when VAULT_KEY is unset the key is derived
+    from SECRET_KEY exactly as before. Production refuses to start without a separate VAULT_KEY (see config.py).
+    Fernet is AES-128-CBC with an HMAC-SHA256 integrity tag.
+    """
+    derived_32 = hashlib.sha256((settings.VAULT_KEY or settings.SECRET_KEY).encode()).digest()
     fernet_key = base64.urlsafe_b64encode(derived_32)
     return Fernet(fernet_key)
 

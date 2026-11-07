@@ -7,10 +7,12 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7.0-DC382D?style=flat-square&logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose_v2-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/Tests-267%2F267%20Passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
+[![Tests](https://img.shields.io/badge/Tests-407%20backend%20%7C%20250%20frontend%20passing-success?style=flat-square&logo=pytest&logoColor=white)](backend/tests/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An enterprise-grade, automated network configuration-drift detection and remediation platform designed for decentralized campus environments (academic lecture halls, student hostels, research laboratories, and administrative offices).
+
+**Preparing to explain this project?** See [docs/INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md): every claim mapped to its code and its proof.
 
 ---
 
@@ -49,7 +51,7 @@ In multi-tenant campus networks, switches and routers steadily deviate from secu
 - NTP clock desynchronization compromising security incident forensics.
 - Unauthorized VLAN assignments causing inter-VLAN leakage between isolated student, faculty, and administrative networks.
 
-**Campus Drift Detector** continuously audits running network configurations against cryptographically verified golden baselines, scores deviations by risk and campus zone criticality, suppresses authorized changes within approved maintenance windows, and generates safe, templated CLI remediation commands with automated pre-change backups and rollback verification.
+**Campus Drift Detector** continuously audits running network configurations against approved golden baselines, scores deviations by risk and campus zone criticality, suppresses authorized changes within approved maintenance windows, and generates safe, templated CLI remediation commands with automated pre-change backups and rollback verification.
 
 ---
 
@@ -69,26 +71,26 @@ In multi-tenant campus networks, switches and routers steadily deviate from secu
 
 ## Feature Walkthrough & Screenshots
 
-### 1. Operational Overview Dashboard
-*Real-time compliance gauge, active devices inventory breakdown, and 14-day drift trendline analytics.*
+### 1. Home: what needs attention
+*One screen: how many problems need attention, four key numbers, and the list to work through.*
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ---
 
-### 2. Campus Device Inventory
-*Inventory view with physical campus zone weights, IP endpoints, credentials vault, and live polling triggers.*
+### 2. Devices
+*Search, filter by zone and status, see which devices have open problems, and collect a configuration now.*
 ![Devices](docs/screenshots/devices.png)
 
 ---
 
-### 3. Drift Detection & Side-by-Side Diff Viewer
-*Structured rule-level comparison highlighting unauthorized deviations against golden baselines with unified diff inspection.*
+### 3. One problem: what changed
+*Expected against actual for each setting, why it matters, and the two things you can do: create a remediation or close it as not a problem.*
 ![Drift Details](docs/screenshots/drift.png)
 
 ---
 
-### 4. Safe Remediation Terminal & Rollback Safety
-*Jinja2-templated command preview, Admin peer sign-off gate, live execution, and automated rollback triggers.*
+### 4. Remediation
+*The approved plan, the exact commands that will be sent, progress through write, approve, apply and verify, and Apply or Rollback with a confirmation.*
 ![Remediation](docs/screenshots/remediation.png)
 
 ---
@@ -109,8 +111,8 @@ In multi-tenant campus networks, switches and routers steadily deviate from secu
 
 ```mermaid
 flowchart TD
-    subgraph UI["Frontend Layer: React 18 + TypeScript + Vite (Port 5174)"]
-        DASH["Dashboard & Recharts Trends"]
+    subgraph UI["Frontend Layer: React 18 + TypeScript + Vite (Port 5173)"]
+        DASH["Home and problem lists"]
         DIFF_UI["Side-by-Side Diff Viewer"]
         APP_UI["Approval Queue"]
         REM_UI["Remediation Terminal"]
@@ -161,8 +163,7 @@ flowchart TD
 | **Frontend** | React 18, TypeScript 5.5, Vite 5.4 | Interactive Single Page Application (SPA) |
 | **Styling** | Tailwind CSS 3.4, Lucide React | Responsive operational dashboard with dark-mode accents |
 | **State & Data** | TanStack Query v5, Zustand v4 | Client-side data caching and session persistence |
-| **Charts** | Recharts 2.12 | 14-day compliance and drift trendline analytics |
-| **Testing** | pytest, pytest-asyncio, httpx | 267 automated unit and integration tests |
+| **Testing** | pytest, pytest-asyncio, httpx | 438 backend tests (396 offline unit + 42 integration) and 251 frontend component tests (Vitest) |
 
 ---
 
@@ -262,7 +263,7 @@ The REST API provides 37 secure endpoints built on FastAPI with automated OpenAP
 | **Alerts** | `GET` | `/api/alerts` | Viewer+ | Retrieves real-time alerts for critical drift and device connectivity (`200`). |
 | **Alerts** | `POST` | `/api/alerts/{alert_id}/ack` | NetEng+ | Acknowledges an active operational alert (`200`, `404`). |
 | **Audit** | `GET` | `/api/audit` | Viewer+ | Queries immutable append-only audit trail by user, action, and timestamp (`200`). |
-| **Dashboard** | `GET` | `/api/dashboard/summary` | Viewer+ | Aggregates campus compliance percentage, active alerts, and 14-day trends (`200`). |
+| **Dashboard** | `GET` | `/api/dashboard/summary` | Viewer+ | Aggregates campus compliance percentage, active alerts and the latest alerts (`200`). |
 
 ---
 
@@ -273,14 +274,14 @@ For complete architectural specifications, see the dedicated guide: **[docs/test
 ### Testing Architecture Summary
 
 The repository provides a three-tiered testing strategy guaranteeing deterministic, offline validation:
-1. **Unit Testing Purity (237 Tests - 100% Passing in ~22s):** Runs completely offline using an in-memory SQLite fixture (`sqlite:///:memory:`) and eager in-memory Celery broker (`memory://`), completely isolated from physical PostgreSQL or Redis servers.
-2. **Integration Testing (30 Tests):** Validates Celery async task dispatch, live SSH interaction with containerized switches, PostgreSQL transactional advisory locking, and end-to-end rollback verification.
-3. **Frontend Quality & E2E Testing:** Playwright automated test suite (`frontend/e2e/dashboard-workflows.spec.ts`) validating 6 core dashboard workflows (Authentication, Metrics, Devices, Drift, Four-Eyes Approvals, and Audit Trail).
+1. **Unit Testing Purity (396 Tests, about 40s):** Runs completely offline using an in-memory SQLite fixture (`sqlite:///:memory:`) and eager in-memory Celery broker (`memory://`), completely isolated from physical PostgreSQL or Redis servers.
+2. **Integration Testing (42 Tests):** Validates Celery async task dispatch, live SSH interaction with containerized switches, PostgreSQL transactional advisory locking, and end-to-end rollback verification.
+3. **Frontend Quality & E2E Testing:** 250 Vitest component tests; a mocked-API Playwright suite (`frontend/e2e`, 6 workflows); and a black-box Playwright suite (`frontend/e2e-real`, 97 tests) that drives the real UI against the real API, PostgreSQL and the simulated switches. See `docs/ui-test-report.md`.
 
 ### Test & Linter Execution Commands
 
 ```bash
-# 1. Run All 237 Offline Unit Tests (Zero External Services Needed)
+# 1. Run All 267 Offline Unit Tests (Zero External Services Needed)
 PYTHONPATH=backend ./.venv/bin/pytest backend/tests/unit -v
 
 # 2. Run Integration Tests (Requires Docker Stack)
@@ -338,7 +339,7 @@ The application enforces 5 resilient error boundaries:
    ```
 
 4. **Access the application:**
-   - **Web UI:** [http://localhost:5174](http://localhost:5174) (or `http://localhost:5173` depending on `.env`)
+   - **Web UI:** [http://localhost:5173](http://localhost:5173) (`FRONTEND_PORT` in `.env` changes it)
    - **Interactive API Documentation (Swagger):** [http://localhost:8000/docs](http://localhost:8000/docs)
    - **Alternative ReDoc Docs:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
    - **Backend Health Check:** [http://localhost:8000/api/health](http://localhost:8000/api/health)
@@ -381,7 +382,7 @@ npm run dev
 
 ### Running Automated Tests
 
-Run the complete 267-test suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
+Run the complete 297-test backend suite covering parsers, diffing logic, security guardrails, Celery tasks, and SSH rollback flows:
 
 ```bash
 # From project root (with postgres & redis running)
@@ -389,7 +390,7 @@ pytest backend/tests -v
 ```
 
 ```text
-================== 267 passed, 4 warnings in ~80s ==================
+================== 297 passed in ~90s (267 unit + 30 integration) ==================
 ```
 
 ---
@@ -501,15 +502,15 @@ See [docs/legacy-coexistence.md](docs/legacy-coexistence.md) for the staged migr
 
 ## Where to Get Help & Documentation
 
-- [architecture.md](architecture.md): Full architectural specification, sequence diagrams, and design records.
-- [docs/testing-and-error-boundaries.md](docs/testing-and-error-boundaries.md): Granular technical documentation on offline unit testing isolation (237 tests) and 5 architectural error boundaries.
+- [docs/architecture.md](docs/architecture.md): Full architectural specification, sequence diagrams, and design records.
+- [docs/testing-and-error-boundaries.md](docs/testing-and-error-boundaries.md): Granular technical documentation on offline unit testing isolation (267 tests) and 5 architectural error boundaries.
 - [docs/evaluation-error-analysis.md](docs/evaluation-error-analysis.md): Labelled-corpus experiment: baselines vs pipeline vs ablations, FP/FN inspection, defects found and fixed. Definitions in [docs/labels-and-thresholds.md](docs/labels-and-thresholds.md); reproduce with [evaluation/README.md](evaluation/README.md).
 - [docs/validation/README.md](docs/validation/README.md): Stakeholder-validation kit (protocol, tasks, SUS, rating form, analysis) and the pre-pilot walkthrough. **Sessions with real participants have not been run yet.**
 - [docs/failure-cases.md](docs/failure-cases.md): Failure and edge-case catalogue (rollback, concurrency, credentials, tickets, time zones) and the scripted rollback demonstration (`./scripts/demo_rollback.sh`).
 - [docs/legacy-coexistence.md](docs/legacy-coexistence.md): Legacy workflow coexistence, staged migration plan, and rollback to manual control.
 - [docs/itsm-integration.md](docs/itsm-integration.md): Detailed guide for integrating ServiceNow and Jira webhooks with HMAC signatures.
 - [docs/evaluation-report.md](docs/evaluation-report.md): Benchmark results, empirical accuracy metrics, and failure scenarios.
-- [PHASE_COMPLETION_REPORT_35.md](PHASE_COMPLETION_REPORT_35.md): Milestone criteria and test suite breakdown.
+- [docs/PHASE_COMPLETION_REPORT_35.md](docs/PHASE_COMPLETION_REPORT_35.md): Milestone criteria and test suite breakdown.
 - **Interactive API Documentation:** Available at [http://localhost:8000/docs](http://localhost:8000/docs) when running locally.
 
 If you encounter issues or have questions:

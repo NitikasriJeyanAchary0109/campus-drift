@@ -243,3 +243,61 @@ def test_webhook_created_ticket_authorizes_drift(webhook_test_env):
     assert event.matched_ticket_id is not None
     assert event.matched_ticket.external_ref == f"CHG-AUTH-{uid}"
     assert event.matched_ticket.source == "servicenow"
+
+
+# --- hardening round: replay protection, no campus-wide tickets ------------------------------------------------------
+import time as _time  # noqa: E402
+
+
+def _post(env, payload, *, timestamp=None, sign_with_timestamp=True):
+    body = json.dumps(payload).encode()
+    headers = {}
+    signed = body
+    if timestamp is not None:
+        headers["X-ITSM-Timestamp"] = str(timestamp)
+        if sign_with_timestamp:
+            signed = f"{timestamp}.".encode() + body
+    headers["X-ITSM-Signature"] = _compute_hmac(settings.ITSM_WEBHOOK_SECRET, signed)
+    return TestClient(app).post("/api/tickets/webhook", content=body, headers={**headers, "content-type": "application/json"})
+
+
+def _payload(env, **over):
+    device = env[1]
+    base = {"external_ref": f"SN-{uuid.uuid4().hex[:6]}", "source": "servicenow", "hostname": device.hostname,
+            "key_path_scope": "ntp.server", "valid_from": "2026-10-27T11:00:00Z", "valid_to": "2026-10-27T13:00:00Z"}
+    return {**base, **over}
+
+
+def test_timestamped_delivery_is_accepted(webhook_test_env):
+    assert _post(webhook_test_env, _payload(webhook_test_env), timestamp=int(_time.time())).status_code == 200
+
+
+def test_replayed_delivery_outside_the_tolerance_is_refused(webhook_test_env):
+    old = int(_time.time()) - settings.ITSM_TIMESTAMP_TOLERANCE_SECONDS - 60
+    assert _post(webhook_test_env, _payload(webhook_test_env), timestamp=old).status_code == 401
+
+
+def test_timestamp_is_part_of_the_signature(webhook_test_env):
+    r = _post(webhook_test_env, _payload(webhook_test_env), timestamp=int(_time.time()), sign_with_timestamp=False)
+    assert r.status_code == 401
+
+
+def test_timestamp_is_mandatory_when_required(webhook_test_env, monkeypatch):
+    monkeypatch.setattr(settings, "ITSM_REQUIRE_TIMESTAMP", True)
+    assert _post(webhook_test_env, _payload(webhook_test_env)).status_code == 401
+
+
+def test_unknown_hostname_never_becomes_a_campus_wide_ticket(webhook_test_env):
+    r = _post(webhook_test_env, _payload(webhook_test_env, hostname="no-such-switch"))
+    assert r.status_code == 422
+
+
+def test_ticket_naming_nothing_is_refused(webhook_test_env):
+    payload = {k: v for k, v in _payload(webhook_test_env, key_path_scope="*").items() if k != "hostname"}
+    assert _post(webhook_test_env, payload).status_code == 422
+
+
+def test_ticket_ref_of_another_source_is_not_overwritten(webhook_test_env):
+    assert _post(webhook_test_env, _payload(webhook_test_env, external_ref="REF-1", ticket_ref="SHARED")).status_code == 200
+    other = _payload(webhook_test_env, external_ref="JIRA-9", source="jira", ticket_ref="SHARED")
+    assert _post(webhook_test_env, other).status_code == 409

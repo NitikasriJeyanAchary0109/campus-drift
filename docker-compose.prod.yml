@@ -1,0 +1,85 @@
+# Production stack (API + workers + data stores). Use instead of docker-compose.yml:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# Differences from the development file: no bind mounts (code is baked into the image), Postgres and Redis are not
+# published to the host, every secret is mandatory (compose aborts if one is missing, and the app itself refuses to
+# start with development defaults when ENVIRONMENT=production), and each container has a memory cap.
+# The frontend is built separately (`npm run build`) and served by your web server / CDN.
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-campus_drift}
+  ENVIRONMENT: production
+  DEBUG: "false"
+  SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (32+ chars)}
+  VAULT_KEY: ${VAULT_KEY:?set VAULT_KEY (32+ chars, different from SECRET_KEY)}
+  ITSM_WEBHOOK_SECRET: ${ITSM_WEBHOOK_SECRET:?set ITSM_WEBHOOK_SECRET}
+  CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS, e.g. https://drift.example.edu}
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-campus_drift}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 96m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
+    environment: *backend-env
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    mem_limit: 256m
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info -Q celery,remediation --concurrency=2
+    environment: *backend-env
+    mem_limit: 256m
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    restart: unless-stopped
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    environment: *backend-env
+    mem_limit: 128m
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+volumes:
+  postgres_data:

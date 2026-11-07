@@ -64,6 +64,10 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
           open_drift_count: 2,
           pending_approvals_count: 1,
           active_alerts_count: 1,
+          // the real summary lists the latest alerts; Home shows the unacknowledged ones under "Needs attention"
+          recent_alerts: [
+            { id: 'aaaaaaaa-0000-0000-0000-000000000001', type: 'CRITICAL_DRIFT', message: 'High-priority drift detected on sw-hostel-01', acknowledged: false, created_at: new Date().toISOString() },
+          ],
           recent_drift_events: [
             {
               id: '22222222-2222-2222-2222-222222222222',
@@ -130,7 +134,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     // Mock approvals queue
-    await page.route('**/api/approvals*', async (route) => {
+    await page.route('**/api/approvals/**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -138,12 +142,21 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
           {
             id: 'plan-1',
             drift_event_id: '22222222-2222-2222-2222-222222222222',
+            device_hostname: 'sw-hostel-01',
+            drift_label: 'Non-Compliant (Critical)',
+            risk_score: 95,
+            created_by_username: 'neteng',
             status: 'PENDING',
             proposed_commands: ['no snmp-server community public', 'line vty 0 4', 'transport input ssh'],
             created_at: new Date().toISOString(),
           },
         ]),
       });
+    });
+
+    // Mock remediation history (Approvals lists recently decided plans)
+    await page.route('**/api/remediation*', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
     });
 
     // Mock alerts
@@ -174,7 +187,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
             action: 'REMEDIATION_PLAN_APPROVED',
             target_type: 'remediation',
             target_id: 'plan-1',
-            user: { username: 'admin' },
+            username: 'admin',
             timestamp: new Date().toISOString(),
           },
         ]),
@@ -185,7 +198,7 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
   // Workflow 1: Authentication & RBAC Gate
   test('Workflow 1: User Login and Session Initialization', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.getByText('Campus Drift Detector')).toBeVisible();
+    await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
 
     // Fill credentials
     await page.locator('input[type="text"]').fill('admin');
@@ -272,7 +285,9 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     });
 
     await page.goto('/approvals');
-    await expect(page.getByText('plan-1').or(page.getByText('Pending')).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: /waiting for approval/i })).toBeVisible();
+    await expect(page.getByText('sw-hostel-01').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 
   // Workflow 6: Immutable Audit Trail & Alerts
@@ -294,6 +309,6 @@ test.describe('Campus Drift - 6 Core UI Dashboard Workflows', () => {
     await expect(page.getByText('Critical configuration drift').first()).toBeVisible();
 
     await page.goto('/audit');
-    await expect(page.getByText('REMEDIATION_PLAN_APPROVED').or(page.getByText('audit-1')).first()).toBeVisible();
+    await expect(page.getByText('Remediation plan approved').first()).toBeVisible();
   });
 });

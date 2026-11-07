@@ -179,7 +179,7 @@ def activate_baseline_endpoint(
     Role: Admin only
     """
     try:
-        target, prev_active_id = activate_baseline(db, baseline_id)
+        target, prev_active_id = activate_baseline(db, baseline_id, current_user.id)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

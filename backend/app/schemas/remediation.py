@@ -72,3 +72,18 @@ class RollbackResponse(BaseModel):
     action_id: UUID
     result: str  # ROLLED_BACK / ROLLBACK_FAILED
     details: Dict[str, Any] = {}
+
+
+class QueuedRemediationResponse(BaseModel):
+    """Returned with HTTP 202 when the operation was handed to the worker: poll GET /remediation/jobs/{task_id}."""
+    message: str
+    task_id: str
+    remediation_plan_id: UUID
+    state: str = "QUEUED"
+
+
+class JobStatusOut(BaseModel):
+    task_id: str
+    state: str  # PENDING (waiting for a worker) / STARTED / SUCCESS / FAILURE
+    finished: bool
+    result: Optional[Dict[str, Any]] = None

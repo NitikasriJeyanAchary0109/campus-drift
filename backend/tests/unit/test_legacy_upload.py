@@ -417,7 +417,7 @@ def test_approved_plan_is_not_pushed_to_shadow_device(env, monkeypatch):
 
     # MANUAL_UPLOAD device
     with pytest.raises(HTTPException) as exc:
-        apply_remediation_plan(db, plan.id, neteng.id)
+        apply_remediation_plan(db, plan.id, admin.id)
     assert exc.value.status_code == 409
 
     # SSH_POLL + shadow_mode device
@@ -426,7 +426,7 @@ def test_approved_plan_is_not_pushed_to_shadow_device(env, monkeypatch):
     dev.shadow_mode = True
     db.commit()
     with pytest.raises(HTTPException) as exc:
-        apply_remediation_plan(db, plan.id, neteng.id)
+        apply_remediation_plan(db, plan.id, admin.id)
     assert exc.value.status_code == 409
     assert "shadow" in exc.value.detail
     assert db.query(Backup).count() == 0

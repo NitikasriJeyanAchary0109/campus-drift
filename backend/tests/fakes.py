@@ -28,6 +28,8 @@ class FakeDevice:
         reset_supported: bool = True,      # False = real-IOS behaviour: 'simulator-reset-pristine' is an invalid command
         garbage_reads: int = 0,            # number of post-change 'show running-config' reads that return a corrupted stream
         dead_forever_after_push: bool = False,  # device is unreachable for all new connections once pushed to
+        write_memory_ok: bool = True,      # 'write memory' answers [OK]; False = it errors (read-only flash, full disk ...)
+        transient_read_errors: int = 0,    # post-change 'show running-config' reads that time out before one succeeds
     ):
         self.pristine = config
         self.running = config
@@ -40,6 +42,10 @@ class FakeDevice:
         self.reset_supported = reset_supported
         self.garbage_reads = garbage_reads
         self.dead_forever_after_push = dead_forever_after_push
+        self.write_memory_ok = write_memory_ok
+        self.transient_read_errors = transient_read_errors
+        self.saved_config: Optional[str] = None
+        self.reset_commands_received = 0
         self.connections = 0
         self.pushes: List[List[str]] = []
         self.pushed_once = False
@@ -143,11 +149,20 @@ class FakeConn:
         self._check()
         low = cmd.strip().lower()
         if low.startswith("show run"):
+            if self.d.transient_read_errors > 0 and self.d.pushed_once:
+                self.d.transient_read_errors -= 1
+                raise DeviceFault("read timed out")
             if self.d.garbage_reads > 0 and self.d.pushed_once:
                 self.d.garbage_reads -= 1
                 return "version 15.2\nhostname x\n!%#CORRUPTED_STREAM#%!\n"
             return self.d.running
+        if low in ("write memory", "wr"):
+            if not self.d.write_memory_ok:
+                raise DeviceFault("write memory failed")
+            self.d.saved_config = self.d.running
+            return "Building configuration...\n[OK]"
         if low in ("simulator-reset-pristine", "test-reset-default"):
+            self.d.reset_commands_received += 1
             if self.d.rollback_error:
                 raise DeviceFault("rollback command failed")
             if not self.d.reset_supported:

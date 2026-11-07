@@ -1,53 +1,115 @@
-# REVIEW #3 FINAL REPORT: 100% COMPLETION MILESTONE
+# Review 3 Report: 30% Milestone (cumulative about 65%)
+
 Project: Campus Network Configuration-Drift Detector with Approved-Baseline Remediation
-Repository: https://github.com/NitikasriJeyanAchary0109/campus-drift.git (Branch: main | Commit: 8e9b0db)
-Review Milestone: Review #3 (100% Final Completion | 30 Marks)
+Repository: https://github.com/NitikasriJeyanAchary0109/campus-drift (branch `main`)
 
-1. PROJECT STATUS & 100% COMPLETION SUMMARY
-Campus Drift Detector is an automated drift detection and remediation platform engineered for multi-tenant campus networks (classrooms, hostels, research labs, offices, and events). The system polls running configs over SSH, normalizes vendor syntaxes (Cisco IOS, FRR) into canonical JSON ASTs, performs semantic tree-diffs against approved golden baselines, scores drift severity scaled by zone criticality (Lab 1.2x, Classroom 1.0x, Hostel 0.8x, Event 0.5x), correlates change tickets to suppress authorized alerts (+/- 30 min window), and generates zero-free-text Jinja2 remediation commands protected by a four-eyes approval gate and automated byte-verified rollback.
+Every number below was regenerated on the current code; the command that reproduces it is given next to it.
+Work that is not finished is listed in section 6 instead of being described as done.
 
-Current Completion: 100% (All 7 Work Packages delivered, Review #1 and #2 feedback items resolved, 267/267 tests passing [237 offline unit in 22.3s, 30 integration], 17 database tables, 37 REST API endpoints, ESLint/Ruff compliance, Playwright E2E UI automation, clean Docker orchestration).
+## 1. Status summary
 
-2. REVIEW #2 FEEDBACK ADDRESSED (CRITICAL RUBRIC FOCUS)
-Review #2 evaluated the project at 92% (35 marks) with two technical improvement asks:
+| Area | State |
+|---|---|
+| Labelled evaluation corpus + harness (WP1) | Done: 100-device standard corpus and a 70-device challenge corpus, one command each |
+| Legacy coexistence and migration (WP2) | Done: upload API and UI card, collection modes, shadow mode, bulk import with baseline mining |
+| Second real parser (WP3) | Done for FRRouting `vtysh` syntax (new this milestone); OpenConfig/gNMI ingest is still a roadmap stub |
+| ITSM depth (WP4) | Partly done: signed webhook receiver for ServiceNow and Jira payloads, Tickets page; no write-back to the ITSM |
+| Scale and modest hardware (WP5) | Partly done: memory measured; 100/500/1000-snapshot scaling and a free-tier cloud run not done |
+| Failure cases and rollback demo (WP6) | Done: 11-scenario failure matrix, 22 remediation failure tests, scripted 3-state rollback demo |
+| Stakeholder validation (WP7) | Kit done, **sessions not run** (no participant data exists) |
+| Docs, CI, deployment, ethics (WP8) | Done except the items in section 6 |
 
-Feedback Item 1: "Provide more granular technical documentation on unit testing and error boundaries."
-Actions Delivered:
-1. Technical Architecture Document: Authored docs/testing-and-error-boundaries.md detailing the unit testing philosophy, 26-suite test inventory, and formal specifications for the 5 architectural error boundaries.
-2. 100% Offline Unit Testing Purity: Implemented an in-memory SQLite fixture (backend/tests/unit/conftest.py) utilizing StaticPool with SQLite foreign key enforcement (PRAGMA foreign_keys=ON). Configured in-memory Celery eager execution (broker_url="memory://", CELERY_TASK_ALWAYS_EAGER=True). The entire 237-unit-test suite executes offline without PostgreSQL or Redis in 22.3s (237/237 passed, 100% pass rate).
-3. Documented 5 Architectural Error Boundaries:
-   - Boundary 1 (Network/SSH): NetmikoBaseException caught on socket timeouts (10s), auth failures, and drops; device marked UNREACHABLE and DEVICE_DOWN alert dispatched while preserving prior snapshots and drift history.
-   - Boundary 2 (Concurrency/Locks): PostgreSQL advisory locking (pg_try_advisory_xact_lock) isolates per-device polling sweeps and remediation; second caller receives SKIPPED or HTTP 409 Conflict; stale claims (>15 min) auto-aborted.
-   - Boundary 3 (Input Validation/Security): Zero free-text user CLI; parameters validated against regex [;&|$\`\"], rejecting shell metacharacters with SecurityViolationError (HTTP 422); constant-time HMAC-SHA256 webhook validation (HTTP 401 on mismatch).
-   - Boundary 4 (Dual-Control Four-Eyes Gate): Plan author prohibited from approving own plan (plan.created_by == user.id yields HTTP 403 Forbidden and FOUR_EYES_VIOLATION audit log).
-   - Boundary 5 (Remediation & Rollback Safety): Pre-change snapshot captured before CLI push; post-change poll verifies target state; on verification failure, rollback restores pre-change backup over fresh SSH, re-verifies byte equality, and logs ROLLED_BACK. If unprovable, flags ROLLBACK_FAILED for emergency dispatch.
-4. Frontend ESLint & Playwright E2E Automation: Configured frontend/.eslintrc.cjs (zero warnings), added Playwright E2E suite (frontend/e2e/dashboard-workflows.spec.ts) covering 6 core workflows (Auth, Metrics, Devices, Drift, Approvals, Audit), and configured pre-commit gate (scripts/pre_commit.sh) executing Ruff, Pytest, ESLint, and Vite build.
-Evidence: docs/testing-and-error-boundaries.md, backend/tests/unit/conftest.py, frontend/e2e/dashboard-workflows.spec.ts, scripts/pre_commit.sh.
+Review 1 and Review 2 asks (celery queue, ACL ordering, ITSM webhooks, test and error-boundary documentation, README API and schema
+reference) are covered in section 2.
 
-Feedback Item 2: "Expand code comments and document API endpoints / database schema in README for subsequent reviews."
-Actions Delivered:
-1. Database Schema Documentation in README.md: Added Mermaid ER diagram and structured specifications for all 17 relational database tables across auth, inventory, baselines, snapshots, tickets, drift, remediation, approvals, backups, alerts, and audit logs, detailing PKs, FKs, column types, and architectural roles.
-2. Complete 37-Endpoint REST API Reference in README.md: Added structured reference table categorizing all 37 FastAPI routes across 10 functional domains (System, Auth, Devices, Baselines, Tickets, Drift, Remediation, Approvals, Alerts, Audit, Dashboard) with HTTP methods, required RBAC permissions (Public, Viewer, NetEng, Admin), description, and status codes.
-3. Expanded In-Code Docstrings and Comments:
-   - backend/app/services/drift.py: Documented zone-weighted scoring formula (raw_score = severity_weight * criticality_weight, clamped to 1-100), 6-band taxonomy classification, and ACL first-match semantics.
-   - backend/app/services/remediation.py: Documented the 4 security invariants, zero-free-text enforcement, pre-change snapshotting, and byte-level equality verification.
-   - backend/app/api/tickets.py: Documented timing-safe HMAC-SHA256 signature verification over raw request bytes (hmac.compare_digest) and idempotent ticket updates.
-Evidence: README.md (sections 'Database Schema Reference', 'API Endpoint Reference', 'Unit Testing & Error Boundaries'), backend/app/services/drift.py, backend/app/services/remediation.py, backend/app/api/tickets.py.
+## 2. Earlier review feedback
 
-3. CUMULATIVE ARCHITECTURE & MULTI-CAMPUS IMPLEMENTATION (100% DELIVERED)
-The platform delivers complete coverage across 7 foundational work packages:
-- WP1: Labelled Challenge Corpus: 120 synthetic switch configs across Cisco IOS and FRR, 2-fold cross-validation tuning, achieving 98.4% precision and 97.6% recall.
-- WP2: Legacy Workflow Coexistence: MANUAL_UPLOAD collection mode, report-only shadow mode, and bulk import CLI (scripts/import_legacy.py) with automated baseline mining.
-- WP3: Celery + Redis Asynchronous Polling: Decoupled Netmiko SSH blocking calls from FastAPI event loop using Celery distributed tasks, background Redis queue, and Celery Beat scheduler.
-- WP4: Semantic ACL Sequence Ordering: Built app/services/acl_analyzer.py calculating pairwise IPv4 subnet intersections; disjoint permutations classified as COSMETIC, while overlapping permutations trigger ACL_ORDER_SIGNIFICANT with an enforced minimum severity floor of 80.
-- WP5: External ITSM Webhook Receiver: Ingests ServiceNow/Jira change tickets via HMAC-SHA256 authenticated webhooks (/api/tickets/webhook), suppressing alerts within +/- 30 min maintenance windows.
-- WP6: Failure Boundary Suite & Verified Rollback: 22 failure tests covering SSH drops, corrupt configs, and credential rotation; live demonstration (scripts/demo_rollback.sh) proves state 3 == state 1 byte-identical restoration.
-- WP7: Stakeholder Usability Kit: Facilitator protocol (docs/validation/README.md) with 8 user tasks measuring System Usability Scale (SUS).
+| Ask | Where it is delivered |
+|---|---|
+| Review 1: replace in-process APScheduler with a worker queue | Celery + Redis (`celery_worker`, `celery_beat` in `docker-compose.yml`, `backend/app/core/celery_app.py`); ADR-003 in `docs/architecture.md`; `apscheduler` removed from requirements |
+| Review 1: hierarchical ACL sequence ordering | `backend/app/services/acl_analyzer.py` (pairwise subnet overlap; significant reorders get a severity floor); ablation C-3 below shows 3 missed devices without it |
+| Review 1: vendor-agnostic OpenConfig/gNMI | **Not delivered**: `docs/architecture.md` roadmap, API returns HTTP 501 for gNMI collection |
+| Review 1: external ITSM webhooks | `POST /api/tickets/webhook` with constant-time HMAC-SHA256 verification (ServiceNow / Jira payloads), `docs/itsm-integration.md` |
+| Review 2: unit-test and error-boundary documentation | `docs/testing-and-error-boundaries.md` (per-module inventory, five error boundaries) |
+| Review 2: comments, API endpoints and database schema in README | `README.md` sections "Database Schema Reference" and "API Endpoint Reference"; docstrings in `services/drift.py`, `remediation.py`, `api/tickets.py` |
 
-4. VERIFICATION, REPRODUCIBILITY & TEST EVIDENCE
-All claims are reproducible on clean environments:
-1. Docker Clean Spin-up: docker compose down -v && docker compose up -d --build (9 healthy containers: postgres, redis, backend, frontend, celery_worker, celery_beat, sw-classroom-01, sw-hostel-01, rtr-lab-01).
-2. Pure Unit Test Suite (Offline): PYTHONPATH=backend ./.venv/bin/pytest backend/tests/unit -v (237 passed, 100% pass rate in 22.3s).
-3. Full Test Suite: PYTHONPATH=backend ./.venv/bin/pytest backend/tests (267 passed).
-4. Pre-Commit Pipeline: ./scripts/pre_commit.sh (Ruff 0 errors, Pytest 237/237 passed, ESLint 0 errors, Vite build succeeded in 3.3s).
-5. Git Log: Commit 8e9b0db on branch main pushed to https://github.com/NitikasriJeyanAchary0109/campus-drift.git.
+## 3. Evaluation (WP1)
+
+Reproduce (no Docker needed):
+
+```bash
+python evaluation/generate_corpus.py && python evaluation/run_eval.py --label after-fixes
+python evaluation/generate_corpus.py --profile challenge && python evaluation/run_eval.py --corpus evaluation/corpus_challenge --label challenge-after-fixes
+```
+
+Definitions and targets (declared before measuring): `docs/labels-and-thresholds.md`. Full tables and per-error analysis:
+`docs/evaluation-error-analysis.md`, `evaluation/results/`.
+
+Standard corpus: 100 devices (96 scored, 4 deliberately corrupted), 40 scenarios, 25 change tickets, seed 20261027.
+Device-level detection of devices needing action:
+
+| System | Precision | Recall | FPR |
+|---|---:|---:|---:|
+| A. naive `diff -u` | 0.605 | 1.000 | 0.681 |
+| B. normalised full-tree diff | 0.742 | 1.000 | 0.362 |
+| **C. full pipeline** | **1.000** | **1.000** | **0.000** |
+| C-1 without semantic normalisation | 0.980 | 1.000 | 0.021 |
+| C-2 without ticket matching | 0.790 | 1.000 | 0.277 |
+| C-3 without ACL order analysis | 1.000 | 0.939 | 0.000 |
+
+Targets met: precision, recall, false-positive rate, evidence completeness, p95 latency 8.4 ms (target 250 ms).
+**Target missed:** recall of high-priority outputs (score 80 and above) is 0.906 against a 0.95 target (29 of 32 found, 3 tier
+misjudgements listed in the error analysis). Tier accuracy is 0.950 over 100 devices (MEDIUM and HIGH are the confusable pair).
+
+Challenge corpus (70 devices, 60 of them adversarial): the full pipeline scores 1.000 / 1.000 with 0 false positives, and the
+naive diff scores precision 0.375. The 1.000 values on generated corpora describe agreement with generated ground truth; they are
+not a claim about unseen real campus configurations, which is why the error analysis keeps the cases the system got wrong
+before the fixes (before-fixes table: full pipeline precision 0.797, FPR 0.255).
+
+## 4. Implementation delta since Review 2
+
+- **Legacy coexistence (WP2):** `POST /api/devices/{id}/config-upload` runs uploads through the same normalise, diff, score and
+  ticket path; per-device `collection_mode` (`SSH_POLL`, `MANUAL_UPLOAD`, `PAUSED`) and `shadow_mode` (report only, remediation is
+  refused); `scripts/import_legacy.py` bulk import with baseline mining; Device Details page shows the mode and the upload card
+  (restored this milestone after the UI redesign removed it). Runbook: `docs/legacy-coexistence.md`.
+- **Second parser:** `backend/app/services/parsers/frr_vtysh.py` parses real FRR syntax (CIDR addresses, `exit` blocks, prefix lists
+  ordered by `seq`, OSPF/BGP including address families). A device registered as `frr` is parsed with it when its text carries an
+  FRR header; the lab router simulator emits IOS-style text and keeps the IOS parser. 17 unit tests.
+- **Failure handling (WP6):** a failed rollback used to be reported as `ROLLED_BACK`; it is now re-read and compared with the
+  backup, otherwise `ROLLBACK_FAILED`. Catalogue and the before/after matrix: `docs/failure-cases.md`, `python scripts/failure_matrix.py`.
+  Rollback demonstration: `./scripts/demo_rollback.sh` (three byte-compared states).
+- **Production hardening:** the application refuses to start with `ENVIRONMENT=production` and default or weak secrets; a separate
+  `VAULT_KEY` for credential encryption; `docker-compose.prod.yml`; `scripts/db_backup.sh` and `db_restore.sh`; CI workflow
+  `.github/workflows/ci.yml`. Details: `docs/deployment-checklist.md`.
+- **User interface:** rebuilt as plain one-column pages (search, a table, filters behind a button, details on their own page)
+  that show only what the API returns; a failed call shows the error and Retry, never example rows. Four main places in the
+  sidebar, the rest under "More", role guards with a "no access" page. Tested at three levels (`docs/ui-test-report.md`);
+  the black-box run found and fixed a credentials-form bug (wrong `auth_type` casing) and a compliance mismatch between Home and Devices.
+
+## 5. Verification (reproducible)
+
+| Check | Command | Result on 2026-11-07 |
+|---|---|---|
+| Backend unit tests (offline) | `PYTHONPATH=backend pytest backend/tests/unit` | 396 passed |
+| Backend integration tests | `PYTHONPATH=backend pytest backend/tests/integration` (needs `docker compose up -d`) | 42 passed |
+| Backend lint | `ruff check backend` | clean |
+| Frontend lint and build | `cd frontend && npm run lint && npm run build` | clean |
+| Frontend component tests | `cd frontend && npm run test:unit` | 251 passed |
+| Mocked browser tests | `cd frontend && npm run test:e2e` | 6 passed |
+| Browser tests against the real API | `cd frontend && npm run test:blackbox` | 97 passed on a freshly built database |
+| Rollback demonstration | `./scripts/demo_rollback.sh` | see `evaluation/results/rollback_demo` |
+
+## 6. Not done
+
+- **Stakeholder validation:** the protocol, task cards, SUS form and analysis script exist (`docs/validation/`); no session has been run,
+  so `docs/validation/results.md` is empty. At least three participants are needed.
+- **gNMI / OpenConfig ingest and ITSM write-back:** not implemented.
+- **Scale curve and free-tier cloud run:** only the memory footprint was measured (about 365 MB without Celery Beat).
+- **CI:** the workflow has been replayed locally (backend and frontend jobs in a clean copy, integration job against the Docker stack) but has not yet run on GitHub, because that needs a push.
+
+## 7. Ethics note
+
+See `docs/PHASE_COMPLETION_REPORT_35.md` section 7 and `docs/labels-and-thresholds.md`. Points that apply to this milestone:
+the hostel zone weight (0.8) discounts student-facing risk and is a per-device-group value in the database; every remediation needs a second person
+(four-eyes) and a pre-change backup; uploads, mode changes and credential changes are audited (the secret is never written to the log); the vault holds device credentials, so it has its own key
+and the key must be handled like the credentials themselves.

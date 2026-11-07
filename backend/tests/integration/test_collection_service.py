@@ -99,6 +99,16 @@ def test_api_device_poll_endpoint(db_session, neteng_token):
     client = TestClient(app)
     headers = {"Authorization": f"Bearer {neteng_token}"}
 
+    def newest_snapshot():
+        db_session.expire_all()
+        return (
+            db_session.query(ConfigurationSnapshot)
+            .filter(ConfigurationSnapshot.device_id == device.id)
+            .order_by(ConfigurationSnapshot.collected_at.desc())
+            .first()
+        )
+
+    before = newest_snapshot()
     res = client.post(f"/api/devices/{device.id}/poll", headers=headers)
     if res.status_code == 502:
         pytest.skip(f"Simulated device sw-hostel-01 not reachable: {res.text}")
@@ -110,13 +120,13 @@ def test_api_device_poll_endpoint(db_session, neteng_token):
     assert data["status"] in ("SUCCESS", "ACCEPTED")
     assert "snapshot ID" in data["message"] or "Task ID" in data["message"]
 
-    # Verify snapshot in DB
-    latest_snap = (
-        db_session.query(ConfigurationSnapshot)
-        .filter(ConfigurationSnapshot.device_id == device.id)
-        .order_by(ConfigurationSnapshot.collected_at.desc())
-        .first()
-    )
+    # A 202 only means "queued": wait for the worker to write the new snapshot instead of reading whatever was there before
+    import time
+    deadline = time.time() + 30
+    latest_snap = newest_snapshot()
+    while time.time() < deadline and (latest_snap is None or (before is not None and latest_snap.id == before.id)):
+        time.sleep(0.5)
+        latest_snap = newest_snapshot()
     assert latest_snap is not None
     assert "hostname sw-hostel-01" in latest_snap.raw_config
     assert latest_snap.normalized_json["hostname"] == "sw-hostel-01"

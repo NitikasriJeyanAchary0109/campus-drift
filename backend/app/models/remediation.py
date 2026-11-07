@@ -42,6 +42,7 @@ class Approval(Base):
     approved_by = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)  # role must be Admin/NetEng
     decision = Column(String(16), nullable=False)  # APPROVED / REJECTED
     comment = Column(Text, nullable=True)
+    commands_sha256 = Column(String(64), nullable=True)  # digest of the commands the approver saw; apply refuses a plan whose commands changed
     decided_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     remediation_plan = relationship("RemediationPlan", back_populates="approval")

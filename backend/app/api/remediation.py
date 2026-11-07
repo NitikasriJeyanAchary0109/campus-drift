@@ -6,9 +6,12 @@ applying approved plans with automatic rollback, and triggering manual rollback 
 """
 from uuid import UUID
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from typing import Any, Dict, Union
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.celery_app import celery_app
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import require_neteng, require_admin
 from app.models.drift import DriftEvent
@@ -19,13 +22,17 @@ from app.schemas.remediation import (
     RemediationActionOut,
     ApplyRemediationResponse,
     RollbackResponse,
+    QueuedRemediationResponse,
+    JobStatusOut,
 )
+from app.models.remediation import Approval
 from app.services.remediation import (
     generate_remediation_plan,
     get_remediation_plan,
     apply_remediation_plan,
     manual_rollback,
 )
+from app.tasks.remediation import apply_plan_task, rollback_plan_task
 
 router = APIRouter(prefix="/remediation", tags=["Remediation"])
 
@@ -138,9 +145,28 @@ def api_get_plan(
     )
 
 
-@router.post("/{plan_id}/apply", response_model=ApplyRemediationResponse)
+def _apply_message(result: str) -> str:
+    if result == "SUCCESS":
+        return "Remediation applied and verified successfully."
+    if result == "ROLLBACK_FAILED":
+        return "CRITICAL: verification failed and the automated rollback could NOT be verified. Device state is unknown: restore the pre-change backup manually."
+    return "Verification failed: automated rollback executed and verified against the pre-change backup."
+
+
+def _raise_if_refused(outcome: Dict[str, Any]) -> None:
+    if not outcome.get("ok"):
+        raise HTTPException(status_code=outcome.get("http_status", 500), detail=outcome.get("detail", "Operation failed"))
+
+
+def _queued(response: Response, async_result: Any, plan_id: UUID, what: str) -> QueuedRemediationResponse:
+    response.status_code = status.HTTP_202_ACCEPTED
+    return QueuedRemediationResponse(message=f"{what} queued. Poll the job for the result.", task_id=str(async_result.id), remediation_plan_id=plan_id)
+
+
+@router.post("/{plan_id}/apply", response_model=Union[ApplyRemediationResponse, QueuedRemediationResponse])
 def api_apply_plan(
     plan_id: UUID,
+    response: Response,
     force_fail: bool = Query(False, description="Internal test parameter to simulate verification failure"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_neteng),
@@ -149,8 +175,33 @@ def api_apply_plan(
     Execute Backup -> Apply -> Verify pipeline.
     Requires prior Approval record with decision=APPROVED (enforced at service layer).
     Triggers automatic rollback if verification fails.
+    With REMEDIATION_USE_QUEUE (the production default) the work runs on the Celery worker: the call returns 202 and a task id,
+    and GET /remediation/jobs/{task_id} reports the result. Without it the call runs inline and returns the result.
     Role: NetEng+
     """
+    if settings.REMEDIATION_USE_QUEUE:
+        get_remediation_plan(db, plan_id)  # 404 now rather than inside the worker
+        approval = db.query(Approval).filter(Approval.remediation_plan_id == plan_id).first()
+        if not approval or approval.decision != "APPROVED":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Remediation plan has not been approved. An Approval record with decision=APPROVED is required.")
+        plan = get_remediation_plan(db, plan_id)
+        if plan.created_by is not None and plan.created_by == current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Four-eyes rule: you drafted this remediation plan, so a different engineer or administrator must apply it.")
+        job = apply_plan_task.delay(str(plan_id), str(current_user.id), force_fail)
+        if not settings.CELERY_TASK_ALWAYS_EAGER:
+            return _queued(response, job, plan_id, "Remediation")
+        outcome = job.get()
+        _raise_if_refused(outcome)
+        passed = outcome["result"] == "SUCCESS"
+        return ApplyRemediationResponse(
+            message=_apply_message(outcome["result"]),
+            action_id=outcome["action_id"],
+            remediation_plan_id=plan_id,
+            result=outcome["result"],
+            executed_commands=outcome["executed_commands"],
+            verification_passed=passed,
+            details={"result": outcome["result"], "executed_at": outcome["executed_at"]},
+        )
     action = apply_remediation_plan(
         db=db,
         plan_id=plan_id,
@@ -158,14 +209,8 @@ def api_apply_plan(
         force_fail_verification=force_fail,
     )
     passed = action.result == "SUCCESS"
-    if passed:
-        msg = "Remediation applied and verified successfully."
-    elif action.result == "ROLLBACK_FAILED":
-        msg = "CRITICAL: verification failed and the automated rollback could NOT be verified. Device state is unknown: restore the pre-change backup manually."
-    else:
-        msg = "Verification failed: automated rollback executed and verified against the pre-change backup."
     return ApplyRemediationResponse(
-        message=msg,
+        message=_apply_message(action.result),
         action_id=action.id,
         remediation_plan_id=action.remediation_plan_id,
         result=action.result,
@@ -175,16 +220,40 @@ def api_apply_plan(
     )
 
 
-@router.post("/{plan_id}/rollback", response_model=RollbackResponse)
+@router.get("/jobs/{task_id}", response_model=JobStatusOut)
+def api_job_status(task_id: str, current_user: User = Depends(require_neteng)):
+    """State and result of a queued remediation operation. Role: NetEng+."""
+    res = celery_app.AsyncResult(task_id)
+    finished = res.ready()
+    result = res.result if finished and res.successful() and isinstance(res.result, dict) else None
+    return JobStatusOut(task_id=task_id, state=res.state, finished=finished, result=result)
+
+
+@router.post("/{plan_id}/rollback", response_model=Union[RollbackResponse, QueuedRemediationResponse])
 def api_manual_rollback(
     plan_id: UUID,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Manually roll back a device to its pre-change backup configuration.
+    Queued the same way as apply when REMEDIATION_USE_QUEUE is on.
     Role: Admin only
     """
+    if settings.REMEDIATION_USE_QUEUE:
+        get_remediation_plan(db, plan_id)
+        job = rollback_plan_task.delay(str(plan_id), str(current_user.id))
+        if not settings.CELERY_TASK_ALWAYS_EAGER:
+            return _queued(response, job, plan_id, "Rollback")
+        outcome = job.get()
+        _raise_if_refused(outcome)
+        return RollbackResponse(
+            message=f"Manual rollback executed with result: {outcome['result']}",
+            action_id=outcome["action_id"],
+            result=outcome["result"],
+            details={"plan_id": str(plan_id), "executed_at": outcome["executed_at"]},
+        )
     action = manual_rollback(db, plan_id, current_user)
     return RollbackResponse(
         message=f"Manual rollback executed with result: {action.result}",

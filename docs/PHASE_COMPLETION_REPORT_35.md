@@ -461,7 +461,7 @@ In accordance with Milestone 1 evaluation criteria, the following architectural 
 2. **Device Platform Support:** Normalization is implemented for Cisco IOS and FRRouting. Juniper JunOS, Arista EOS, and VyOS parsers are not yet implemented.
 3. **ITSM Integration:** Change Ticket matching runs against the internal PostgreSQL `change_tickets` table with temporal windows. Live bidirectional webhooks into external ITSM platforms are deferred.
 4. **Credential Vault Storage:** Development uses an environment-backed Fernet vault key (`DEV_VAULT_KEY`). Production integration with HashiCorp Vault or AWS KMS is deferred.
-5. **Worker Architecture:** Polling runs via internal APScheduler in the backend container; migration to a distributed Celery/Redis cluster for multi-worker concurrency is planned for Phase 10.
+5. **Worker Architecture:** *(historical, 35% milestone)* polling ran via an internal APScheduler in the backend container. This was superseded after Review 1/2 feedback: polling now runs on Celery workers with Redis and Celery Beat (ADR-003 in [architecture.md](architecture.md)).
 
 ---
 

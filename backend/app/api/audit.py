@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -16,6 +17,19 @@ from app.models.users import User
 from app.schemas.audit import AuditLogOut
 
 router = APIRouter(prefix="/audit", tags=["Audit"])
+
+
+@router.get("/verify")
+def api_verify_audit_chain(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """
+    Recompute the hash chain of the audit trail. ok=false names the first sequence number whose row, or whose predecessor,
+    no longer matches what was recorded: the table was edited, a row was removed, or a row was written into the past.
+    Requires PostgreSQL (the chain is built by a database trigger). Role: Admin only.
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return {"supported": False, "ok": None, "detail": "The hash chain exists only on PostgreSQL."}
+    row = db.execute(text("SELECT ok, checked, first_bad_seq FROM audit_verify_chain()")).one()
+    return {"supported": True, "ok": bool(row.ok), "checked": int(row.checked), "first_bad_seq": row.first_bad_seq}
 
 
 @router.get("", response_model=List[AuditLogOut])

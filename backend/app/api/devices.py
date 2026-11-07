@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.rbac import require_admin, require_neteng, require_viewer
+from app.core.audit import record_audit
+from app.models.audit import AuditLog
 from app.models.devices import Device, DeviceGroup
 from app.models.configurations import ConfigurationSnapshot
 from app.models.users import User
@@ -133,6 +135,10 @@ def create_device(
         status=device_in.status.upper(),
     )
     db.add(device)
+    db.flush()
+    record_audit(db, "DEVICE_CREATED", "device", device.id, current_user.id,
+                 after={"hostname": device.hostname, "ip_address": device.ip_address, "vendor": device.vendor,
+                        "device_group_id": str(device.device_group_id), "status": device.status})
     db.commit()
     db.refresh(device)
 
@@ -220,6 +226,9 @@ def update_device(
             detail=f"Device with ID {device_id} not found",
         )
 
+    tracked = ("hostname", "ip_address", "vendor", "model", "status", "device_group_id")
+    before = {k: str(getattr(device, k)) for k in tracked}
+
     if device_in.device_group_id is not None:
         group = db.query(DeviceGroup).filter(DeviceGroup.id == device_in.device_group_id).first()
         if not group:
@@ -240,6 +249,10 @@ def update_device(
     if device_in.status is not None:
         device.status = device_in.status.upper()
 
+    after = {k: str(getattr(device, k)) for k in tracked}
+    record_audit(db, "DEVICE_UPDATED", "device", device.id, current_user.id,
+                 before={k: v for k, v in before.items() if v != after[k]},
+                 after={k: v for k, v in after.items() if v != before[k]})
     db.commit()
     db.refresh(device)
 
@@ -276,7 +289,10 @@ def decommission_device(
             detail=f"Device with ID {device_id} not found",
         )
 
+    previous_status = device.status
     device.status = "DECOMMISSIONED"
+    record_audit(db, "DEVICE_DECOMMISSIONED", "device", device.id, current_user.id,
+                 before={"status": previous_status}, after={"status": "DECOMMISSIONED"})
     db.commit()
     db.refresh(device)
 
@@ -322,6 +338,19 @@ def set_device_credentials(
         secret=cred_in.secret,
         auth_type=cred_in.auth_type,
     )
+
+    # Who changed which device's credentials is audited; neither the username, the secret nor its ciphertext is written here.
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            action="DEVICE_CREDENTIALS_SET",
+            target_type="device",
+            target_id=device_id,
+            before_state=None,
+            after_state={"auth_type": cred.auth_type},
+        )
+    )
+    db.commit()
 
     return DeviceCredentialOut(
         id=cred.id,

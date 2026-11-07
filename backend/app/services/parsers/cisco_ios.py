@@ -116,6 +116,30 @@ def _parse_ntp_server(arguments: str) -> str:
     return server.lower()
 
 
+# Long names for the short forms IOS accepts on the command line ('Gi0/1' is 'GigabitEthernet0/1')
+_INTERFACE_PREFIXES = (
+    ("tengigabitethernet", "TenGigabitEthernet"), ("tengig", "TenGigabitEthernet"), ("te", "TenGigabitEthernet"),
+    ("gigabitethernet", "GigabitEthernet"), ("gig", "GigabitEthernet"), ("gi", "GigabitEthernet"),
+    ("fastethernet", "FastEthernet"), ("fa", "FastEthernet"),
+    ("ethernet", "Ethernet"), ("eth", "Ethernet"),
+    ("port-channel", "Port-channel"), ("po", "Port-channel"),
+    ("loopback", "Loopback"), ("lo", "Loopback"),
+    ("vlan", "Vlan"), ("vl", "Vlan"),
+)
+
+
+def canonical_interface_name(name: str) -> str:
+    """Expand an abbreviated interface type to its full name, so the same port is never two different keys."""
+    m = re.match(r"^([A-Za-z-]+)\s*(\d.*)$", name.strip())
+    if not m:
+        return name.strip()
+    kind, rest = m.group(1).lower(), m.group(2)
+    for prefix, full in _INTERFACE_PREFIXES:
+        if kind == prefix:
+            return f"{full}{rest}"
+    return name.strip()
+
+
 def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
     """
     Parse Cisco IOS running-config into the key-path tree structure defined in §5/§11/§12.
@@ -165,7 +189,8 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
         if "%#" in raw_line or "#%" in raw_line or "\x00" in raw_line:
             raise ParseError(f"Corrupted configuration stream at line {line_idx}: '{raw_line.strip()}'")
 
-        stripped = raw_line.strip()
+        # Runs of spaces or tabs inside a command mean nothing ('switchport  mode  access' is 'switchport mode access')
+        stripped = " ".join(raw_line.split())
         if not stripped:
             continue
 
@@ -269,7 +294,7 @@ def parse_cisco_ios(raw_config: str) -> Dict[str, Any]:
                 if len(parts) < 2 or not parts[1].strip():
                     raise ParseError(f"Malformed interface definition at line {line_idx}")
                 current_block = "interface"
-                current_block_id = parts[1].strip()
+                current_block_id = canonical_interface_name(parts[1].strip())
                 if current_block_id not in tree["interface"]:
                     tree["interface"][current_block_id] = {
                         "switchport": {

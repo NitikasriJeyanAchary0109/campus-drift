@@ -171,7 +171,7 @@ def test_remediation_happy_path_with_device_verification(db_session, tokens):
     assert res_appr.json()["decision"] == "APPROVED"
 
     # 4. Apply Plan via API
-    res_apply = client.post(f"/api/remediation/{plan_id}/apply", headers=neteng_headers)
+    res_apply = client.post(f"/api/remediation/{plan_id}/apply", headers={"Authorization": f"Bearer {tokens['admin']}"})
     assert res_apply.status_code == 200
     apply_data = res_apply.json()
     assert apply_data["result"] == "SUCCESS"
@@ -255,7 +255,7 @@ def test_remediation_automated_rollback_demonstration(db_session, tokens):
     assert res_appr.status_code == 201
 
     # 4. Apply plan with force_fail=True to trigger verification failure
-    res_apply = client.post(f"/api/remediation/{plan_id}/apply?force_fail=true", headers=neteng_headers)
+    res_apply = client.post(f"/api/remediation/{plan_id}/apply?force_fail=true", headers={"Authorization": f"Bearer {tokens['admin']}"})
     assert res_apply.status_code == 200
     data = res_apply.json()
 
@@ -364,7 +364,7 @@ def test_admin_manual_rollback_trigger_restores_backup_and_creates_audit_log(db_
     assert res_appr.status_code == 201
 
     # 3. Apply the plan successfully (creates pre-change backup in DB)
-    res_apply = client.post(f"/api/remediation/{plan_id}/apply", headers=neteng_headers)
+    res_apply = client.post(f"/api/remediation/{plan_id}/apply", headers={"Authorization": f"Bearer {tokens['admin']}"})
     assert res_apply.status_code == 200
     assert res_apply.json()["result"] == "SUCCESS"
 

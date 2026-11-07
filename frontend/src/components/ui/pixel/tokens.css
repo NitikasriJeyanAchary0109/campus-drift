@@ -1,0 +1,125 @@
+/*
+ * DriftWatch design tokens: a neutral, professional light theme (slate neutrals, one blue accent, restrained status colours).
+ * Variable names keep the --dw-* prefix that the components and the Tailwind theme already use.
+ */
+:root {
+  /* neutrals */
+  --dw-ink: #0f172a;
+  --dw-navy: #0f2a47;
+  --dw-cream: #f8fafc;       /* subtle surface */
+  --dw-cream-2: #e2e8f0;     /* borders, dividers */
+  --dw-paper: #ffffff;       /* cards */
+  --dw-sky-pale: #f1f5f9;    /* page background */
+  --dw-sky: #2563eb;
+  --dw-sky-2: #dbeafe;
+  --dw-gray: #94a3b8;
+  --dw-gray-light: #f1f5f9;
+  --dw-gray-dark: #64748b;
+  --dw-border: #cbd5e1;
+
+  /* accent and status colours */
+  --dw-blue: #2563eb;
+  --dw-blue-dark: #1e40af;
+  --dw-blue-ui: #2563eb;
+  --dw-green: #16a34a;
+  --dw-green-dark: #166534;
+  --dw-yellow: #f59e0b;
+  --dw-yellow-dark: #b45309;
+  --dw-orange: #ea580c;
+  --dw-orange-dark: #9a3412;
+  --dw-red: #dc2626;
+  --dw-red-dark: #991b1b;
+  --dw-red-ui: #dc2626;
+  --dw-crimson: #7f1d1d;
+
+  /* legacy names still used by a few components */
+  --dw-grass: #16a34a;
+  --dw-grass-dark: #166534;
+  --dw-brick: #475569;
+  --dw-brick-dark: #334155;
+  --dw-mortar: #1e293b;
+
+  /* diff viewer line colours */
+  --dw-diff-add-bg: #dcfce7;
+  --dw-diff-add-fg: #14532d;
+  --dw-diff-del-bg: #fee2e2;
+  --dw-diff-del-fg: #7f1d1d;
+
+  /* text */
+  --dw-text: var(--dw-ink);
+  --dw-text-muted: #475569;
+  --dw-text-orange: #9a3412;
+
+  /* shape and elevation */
+  --pxl-line-1: 1px;
+  --pxl-line-2: 1px;
+  --pxl-line-3: 1px;
+  --pxl-radius: 8px;
+  --pxl-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --pxl-shadow-2: 0 1px 3px rgba(15, 23, 42, 0.1), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --pxl-shadow-3: 0 10px 24px rgba(15, 23, 42, 0.16);
+
+  /* spacing scale (4px base) */
+  --pxl-sp-1: 4px;
+  --pxl-sp-2: 8px;
+  --pxl-sp-3: 12px;
+  --pxl-sp-4: 16px;
+  --pxl-sp-5: 24px;
+  --pxl-sp-6: 32px;
+
+  /* type */
+  --pxl-font-pixel: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --pxl-font-title: var(--pxl-font-pixel);
+  --pxl-font-body: var(--pxl-font-pixel);
+  --pxl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ---- page ---- */
+.pxl-app {
+  font-family: var(--pxl-font-body);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--dw-text);
+  background-color: var(--dw-sky-pale);
+  -webkit-font-smoothing: antialiased;
+}
+.pxl-app *, .pxl-app *::before, .pxl-app *::after { box-sizing: border-box; }
+.pxl-pixel-font { font-family: var(--pxl-font-pixel); }
+.pxl-title-font { font-family: var(--pxl-font-title); font-weight: 700; letter-spacing: -0.01em; }
+.pxl-mono { font-family: var(--pxl-font-mono); }
+
+/* ---- focus ---- */
+.pxl-focus:focus { outline: none; }
+.pxl-focus:focus-visible { outline: 2px solid var(--dw-blue); outline-offset: 2px; }
+
+/* ---- tones: tinted pairs used by badges, stat icons, step chips ---- */
+.pxl-tone-green   { --t-bg: #dcfce7; --t-fg: #14532d; --t-edge: #86efac; }
+.pxl-tone-blue    { --t-bg: #dbeafe; --t-fg: #1e3a8a; --t-edge: #93c5fd; }
+.pxl-tone-yellow  { --t-bg: #fef3c7; --t-fg: #78350f; --t-edge: #fcd34d; }
+.pxl-tone-orange  { --t-bg: #ffedd5; --t-fg: #7c2d12; --t-edge: #fdba74; }
+.pxl-tone-red     { --t-bg: #fee2e2; --t-fg: #7f1d1d; --t-edge: #fca5a5; }
+.pxl-tone-crimson { --t-bg: #7f1d1d; --t-fg: #ffffff; --t-edge: #7f1d1d; }
+.pxl-tone-gray    { --t-bg: #f1f5f9; --t-fg: #334155; --t-edge: #cbd5e1; }
+.pxl-tone-navy    { --t-bg: #0f2a47; --t-fg: #ffffff; --t-edge: #0f2a47; }
+.pxl-tone-cream   { --t-bg: #ffffff; --t-fg: #0f172a; --t-edge: #cbd5e1; }
+
+.pxl-dashed { border-style: dashed !important; }
+.pxl-hazard { background: var(--dw-yellow); }
+
+/* ---- data views ---- */
+.pxl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pxl-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+.pxl-scroll::-webkit-scrollbar-track { background: var(--dw-gray-light); }
+.pxl-scroll::-webkit-scrollbar-thumb { background: var(--dw-border); border-radius: 6px; }
+
+/* ---- motion (all of it is switched off for reduced motion) ---- */
+@keyframes pxl-blink { 50% { opacity: 0.5; } }
+@keyframes pxl-slide { from { background-position: 0 0; } to { background-position: 32px 0; } }
+@keyframes pxl-pop { from { transform: translateY(4px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pxl-skel { animation: pxl-blink 1.4s ease-in-out infinite; }
+.pxl-barber { animation: pxl-slide 0.8s linear infinite; }
+.pxl-pop { animation: pxl-pop 0.14s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pxl-app *, .pxl-app *::before, .pxl-app *::after { animation: none !important; transition: none !important; }
+}

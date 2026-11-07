@@ -41,7 +41,7 @@ def approved_plan(env, event=None):
 
 def apply(env, plan, fake, monkeypatch, **kw):
     monkeypatch.setattr(rem, "_connect_to_device", lambda db, dev: fake.connect())
-    return rem.apply_remediation_plan(env["db"], plan.id, env["users"]["NetworkEngineer"].id, **kw)
+    return rem.apply_remediation_plan(env["db"], plan.id, env["users"]["Admin"].id, **kw)
 
 
 def alerts(env, **filters):

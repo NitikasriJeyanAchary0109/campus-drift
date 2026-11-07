@@ -6,12 +6,13 @@ label taxonomy classification, and evidence generation per §5, §8, §11, and �
 """
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
+from app.core.config import settings
 from app.models.devices import Device, DeviceGroup
 from app.models.configurations import ConfigurationSnapshot
 from app.models.baselines import Baseline, BaselineRule
@@ -91,6 +92,20 @@ def generate_why_it_matters(key_path: str, rule_type: str, expected_val: Any, ac
         f"Deviation from approved baseline for '{key_path}': expected '{expected_val}', "
         f"detected '{actual_val}'."
     )
+
+
+def _previous_poll_time(db: Session, snapshot: ConfigurationSnapshot) -> Optional[datetime]:
+    """When the device was last read before ``snapshot`` (a change was made some time after that), bounded by the configured lag."""
+    previous = (
+        db.query(ConfigurationSnapshot.collected_at)
+        .filter(ConfigurationSnapshot.device_id == snapshot.device_id, ConfigurationSnapshot.collected_at < snapshot.collected_at)
+        .order_by(ConfigurationSnapshot.collected_at.desc())
+        .first()
+    )
+    if not previous or previous[0] is None:
+        return None
+    floor = snapshot.collected_at - timedelta(minutes=settings.ITSM_MAX_DETECTION_LAG_MINUTES)
+    return max(previous[0], floor)
 
 
 def score_diff(severity_weight: int, criticality_weight: float) -> int:
@@ -229,6 +244,7 @@ def detect_drift(
         return event
 
     normalized_tree = snapshot.normalized_json or {}
+    change_since = _previous_poll_time(db, snapshot)
     group_criticality = device.device_group.criticality_weight if device.device_group else 1.0
 
     diffs: List[DiffItem] = []
@@ -289,6 +305,7 @@ def detect_drift(
                     device=device,
                     key_path=concrete_path,
                     timestamp=snapshot.collected_at,
+                    since=change_since,
                 )
 
                 # 5. Severity scoring & Label classification
